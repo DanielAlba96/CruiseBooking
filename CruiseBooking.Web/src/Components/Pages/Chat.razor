@@ -1,0 +1,60 @@
+@page "/chat"
+@attribute [Authorize]
+
+<PageTitle>Asistente - Cruceros Marejada</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-6">
+    <MudStack Style="height: calc(100vh - 220px);">
+        <MudText Typo="Typo.h5" Color="Color.Primary">Asistente</MudText>
+
+        <MudPaper Class="pa-4 flex-grow-1" Elevation="1" Outlined="true" Style="overflow-y: auto;">
+            @if (_messages.Count == 0)
+            {
+                <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Class="mud-height-full">
+                    <MudIcon Icon="@Icons.Material.Outlined.Chat" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.body1" Color="Color.Secondary">¿En qué puedo ayudarte?</MudText>
+                </MudStack>
+            }
+            else
+            {
+                <MudStack Spacing="3">
+                    @foreach (var msg in _messages)
+                    {
+                        <div @key="msg" class="@(msg.IsUser ? "d-flex justify-end" : "d-flex justify-start")">
+                            <MudPaper Class="pa-3" Elevation="0"
+                                      Style="@BubbleStyle(msg)">
+                                @if (msg.IsStreaming && string.IsNullOrEmpty(msg.Content))
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                }
+                                else if (msg.IsUser)
+                                {
+                                    <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@msg.Content</MudText>
+                                }
+                                else
+                                {
+                                    <div class="chat-markdown">@RenderMarkdown(msg.Content)</div>
+                                }
+                            </MudPaper>
+                        </div>
+                    }
+                </MudStack>
+            }
+        </MudPaper>
+
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudTextField @bind-Value="_input"
+                          Placeholder="Escribe un mensaje..."
+                          Variant="Variant.Outlined"
+                          Immediate="true"
+                          Disabled="_isStreaming"
+                          OnKeyUp="OnInputKeyUp"
+                          Class="flex-grow-1" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Send"
+                       OnClick="SendAsync" Disabled="_isStreaming">
+                Enviar
+            </MudButton>
+        </MudStack>
+    </MudStack>
+</MudContainer>

@@ -1,0 +1,16 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager Navigation
+
+<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <AuthorizeRouteView  RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" >
+            <NotAuthorized>
+                 <RedirectToLogin />
+            </NotAuthorized>
+            <Authorizing>
+                <MudText Typo="Typo.h4">Iniciando sesión...</MudText>
+            </Authorizing>
+    </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>

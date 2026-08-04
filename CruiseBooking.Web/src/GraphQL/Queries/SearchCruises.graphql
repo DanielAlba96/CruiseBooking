@@ -1,0 +1,39 @@
+﻿query SearchCruises($filter: CruiseFilterInput, $order: [CruiseSortInput!], $first: Int, $after: String) {
+  cruises(where: $filter, order:$order, first: $first, after:$after)
+  {
+    nodes
+    {
+      id
+      name
+      code
+      zone
+      description
+      originPort
+      itinerary
+      durationInDays
+      dates 
+      {
+        id
+        startDate
+        ship 
+        {
+            name      
+            cabins 
+            {
+                name         
+                price  
+            }
+          }
+          extras 
+          {
+                name
+                price
+           }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}

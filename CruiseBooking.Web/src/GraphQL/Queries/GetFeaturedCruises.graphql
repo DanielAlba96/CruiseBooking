@@ -1,0 +1,9 @@
+query GetFeaturedCruises() 
+{
+     featuredCruises
+     {
+        id
+        name
+        code
+      }
+}

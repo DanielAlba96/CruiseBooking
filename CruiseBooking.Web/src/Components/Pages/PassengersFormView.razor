@@ -1,0 +1,113 @@
+<MudContainer MaxWidth="MaxWidth.Large">
+    <MudStack Class="mt-8 mb-8">
+
+        <MudPaper Class="mud-primary pa-4">
+            <MudText Align="Align.Center" Typo="Typo.h4">Datos del pasajero</MudText>
+        </MudPaper>
+
+        @if (_isLoading)
+        {
+            <MudStack Class="py-12" AlignItems="AlignItems.Center" Spacing="2">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                <MudText Typo="Typo.body1">Cargando datos del camarote...</MudText>
+            </MudStack>
+        }
+        else
+        {
+            <MudStack Class="mt-6">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.Cabin" Color="Color.Primary" />
+                    <MudText Color="Color.Primary" Typo="Typo.h5">@_cabinType</MudText>
+                    <MudChip T="string" Color="Color.Primary" Size="Size.Small" Variant="Variant.Outlined">
+                        @($"{_registeredCount}/{_maxOccupancy} pasajero(s)")
+                    </MudChip>
+                </MudStack>
+                @if (!string.IsNullOrWhiteSpace(_cabinDescription))
+                {
+                    <MudText Typo="Typo.body2">@_cabinDescription</MudText>
+                }
+                <MudDivider Class="mud-border-divider" />
+            </MudStack>
+
+            <MudCard Class="mt-3">
+                <MudCardContent>
+                    <MudForm @ref="_form" Model="_passenger" Validation="@(passengerValidator.ValidateValue)">
+                        <MudGrid>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField @bind-Value="_passenger.Name"
+                                              For="@(() => _passenger.Name)"
+                                              Label="Nombre"
+                                              Required="true"
+                                              Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField @bind-Value="_passenger.Surname"
+                                              For="@(() => _passenger.Surname)"
+                                              Label="Apellidos"
+                                              Required="true"
+                                              Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudDatePicker @bind-Date="_passenger.BirthDate"
+                                               For="@(() => _passenger.BirthDate)"
+                                               Label="Fecha de nacimiento"
+                                               Variant="Variant.Outlined"
+                                               MaxDate="DateTime.Today"
+                                               Required="true"
+                                               Editable="true" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField @bind-Value="_passenger.Dni"
+                                              For="@(() => _passenger.Dni)"
+                                              Label="DNI"
+                                              Required="true"
+                                              Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField @bind-Value="_passenger.Email"
+                                              For="@(() => _passenger.Email)"
+                                              Label="Email"
+                                              Required="true"
+                                              Variant="Variant.Outlined"
+                                              InputType="InputType.Email" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField @bind-Value="_passenger.Phone"
+                                              For="@(() => _passenger.Phone)"
+                                              Label="Teléfono de contacto"
+                                              Variant="Variant.Outlined"
+                                              Required="true"
+                                              InputType="InputType.Telephone" />
+                            </MudItem>
+                            <MudItem xs="12">
+                                <MudTextField @bind-Value="_passenger.Addres"
+                                              For="@(() => _passenger.Addres)"
+                                              Label="Dirección"
+                                              Required="true"
+                                              Variant="Variant.Outlined" />
+                            </MudItem>
+                        </MudGrid>
+                    </MudForm>
+                </MudCardContent>
+            </MudCard>
+
+            <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mt-4">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Secondary"
+                           Size="Size.Large"
+                           Disabled="_submitting"
+                           Href="@Gateway.CheckInUrl()">
+                    Volver
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           Disabled="_submitting"
+                           OnClick="SubmitAsync">
+                    Añadir pasajero
+                </MudButton>
+            </MudStack>
+        }
+
+    </MudStack>
+</MudContainer>

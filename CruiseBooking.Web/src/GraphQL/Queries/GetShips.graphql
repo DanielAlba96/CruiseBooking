@@ -1,0 +1,7 @@
+query GetShips {
+  ships {
+    code
+	name
+	description
+  }
+}

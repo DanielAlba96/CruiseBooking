@@ -1,0 +1,9 @@
+@page "/booking-passengers/booking/{BookingId:int}"
+@attribute [Authorize]
+
+<PageTitle>Datos de los pasajeros - Cruceros Marejada</PageTitle>
+
+@if (_gateway is not null)
+{
+    <PassengersFormView Gateway="_gateway" CabinId="@CabinId!.Value" />
+}

@@ -1,0 +1,18 @@
+@page "/my-payment-methods"
+
+@attribute [Authorize]
+
+<PageTitle>Mis métodos de pago - Cruceros Marejada</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-6 mb-8">
+    <MudStack Spacing="4">
+        <MudPaper Class="pa-4">
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.h4" Color="Color.Primary">Mis medios de pago</MudText>
+                <MudText Typo="Typo.body1">Consulta, añade o elimina las tarjetas asociadas a tu cuenta.</MudText>
+            </MudStack>
+        </MudPaper>
+
+        <PaymentMethodSelector ShowSaveNewCardButton="true" ShowPayBookingHint="false" ShowAsSelector="false" />
+    </MudStack>
+</MudContainer>

@@ -1,0 +1,133 @@
+﻿@page "/cruise-search"
+
+<PageTitle>Buscar cruceros - Cruceros Marejada</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large">
+    <MudStack Class="mt-10">
+        <MudPaper Class="d-flex flex-column justify-center pl-10 pr-10 pt-5 pb-5" Elevation=" 1" Outlined="true">
+            <MudButton OnClick="OnExpandCollapseClick">@(_expanded ? "Ocultar filtros" : "Mostrar filtros")</MudButton>
+            <MudCollapse Expanded="@_expanded">
+                <MudForm Class="mt-3">
+                    <MudStack Wrap="Wrap.Wrap" Spacing="5" Row="true">
+                        <MudDateRangePicker @bind-DateRange="@_originDateRange"
+                                            Label="Rango de fechas de salida"
+                                            Editable="true"
+                                            Clearable="true"
+                                            AutoClose="true"
+                                            PlaceholderStart="Desde"
+                                            PlaceholderEnd="Hasta" />
+
+                        <MudSelect T="string"
+                                   @bind-SelectedValues="@_selectedOriginPorts"
+                                   MultiSelection="true"
+                                   Label="Puertos de salida">
+                            @foreach (var port in _originPorts)
+                            {
+                                <MudSelectItem Value="@port">
+                                    @port
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+
+                        <MudStack>
+                            <MudNumericField T="int" @bind-Value="@_maxDuration" Label="Duración maxima (dias)" Variant="Variant.Text" Min="1" Max="365" />
+                        </MudStack>
+
+                        <MudCheckBox @bind-Value="@_adultsOnly"
+                                     Color="Color.Primary"
+                                     Label="Solo para adultos">
+                        </MudCheckBox>
+                        <MudCheckBox @bind-Value="@_featuredOnly"
+                                     Color="Color.Primary"
+                                     Label="Solo destacados">
+                        </MudCheckBox>
+                        <MudSelect T="string" @bind-Value="_sortField" Label="Ordenar por" FitContent="true">
+                            <MudSelectItem Value=@("durationInDays_desc")>Duración ↓</MudSelectItem>
+                            <MudSelectItem Value=@("durationInDays_asc")>Duración ↑</MudSelectItem>
+                        </MudSelect>                  
+                    </MudStack>
+
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Justify="Justify.Center" AlignItems="AlignItems.Center" Spacing="2" Class="mt-10">
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="ApplyFilters">Aplicar filtros</MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ResetFilters">Limpiar</MudButton>
+
+                        @if (!string.IsNullOrWhiteSpace(Error))
+                        {
+                            <MudText Color="Color.Error" Typo="Typo.subtitle2" Align="Align.Center">@Error</MudText>
+                        }
+                    </MudStack>
+                </MudForm>
+            </MudCollapse>
+        </MudPaper>
+    </MudStack>
+
+    <MudStack Class="mt-5 mb-5">
+        @foreach (var cruise in Cruises)
+        {
+            <MudPaper Class="border-solid border-2 mud-border-primary">
+                <MudStack Class="pa-3">
+                    <MudText Color="Color.Secondary" Align="Align.Center" Typo="Typo.h5">@cruise.Name</MudText>
+                    <MudDivider Class="mud-border-divider" />
+                    <MudText Typo="Typo.subtitle2" HtmlTag="bold">Itinerario: @cruise.Itinerary (@cruise.DurationInDays dias)</MudText>
+                    <MudText Typo="Typo.body2">@cruise.Description</MudText>
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Spacing="10">
+                        <MudImage Src=@($"images/{cruise.Code}.jpg") Height="200" />
+                        <MudSimpleTable Class="small-table mt-5 mb-5">
+                            <thead>
+                                <tr>
+                                    <th><MudText Typo="Typo.subtitle2">Camarote</MudText></th>
+                                    <th><MudText Typo="Typo.subtitle2">Precio por noche</MudText></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var cabin in SelectedStartDates[cruise.Id].Ship!.Cabins)
+                                {
+                                    <tr>
+                                        <td><MudText Typo="Typo.body2">@cabin.Name</MudText></td>
+                                        <td><MudText Typo="Typo.body2">@cabin.Price €</MudText></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                        @if (SelectedStartDates[cruise.Id].Extras.Any())
+                        {
+                            <MudSimpleTable Class="small-table mt-5 mb-5">
+                                <thead>
+                                    <tr>
+                                        <th><MudText Typo="Typo.subtitle2">Extra</MudText></th>
+                                        <th><MudText Typo="Typo.subtitle2">Precio por viaje</MudText></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var extra in SelectedStartDates[cruise.Id].Extras)
+                                    {
+                                        <tr>
+                                            <td><MudText Typo="Typo.body2">@extra.Name</MudText></td>
+                                            <td><MudText Typo="Typo.body2">@extra.Price €</MudText></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </MudSimpleTable>
+                        }
+                        <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                            <MudText Typo="Typo.h6">Fechas disponibles</MudText>
+                            <MudSelect T="int" Value="@SelectedStartDates[cruise.Id].Id" Variant="Variant.Outlined" FitContent="true" ValueChanged="@(v => OnStartDateChanged(cruise, v))">
+                                @foreach (var cruiseDate in cruise.Dates.OrderBy(x => x.StartDate))
+                                {
+                                    <MudSelectItem Value="@cruiseDate.Id">@DateOnly.FromDateTime(cruiseDate.StartDate.DateTime)</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="@GetBookingUrl(cruise.Id)">Reservar</MudButton>
+                        </MudStack>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+        }
+    </MudStack>
+    @if (_hasNextPage)
+    {
+        <MudStack AlignItems="AlignItems.Center">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadNextPage">Cargar mas</MudButton>
+        </MudStack>
+    }
+</MudContainer>

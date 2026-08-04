@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>235acbcb-a2ae-4ef9-b6e1-4e257791424b</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Features\**" />
+    <Compile Remove="invoices\**" />
+    <Content Remove="Features\**" />
+    <Content Remove="invoices\**" />
+    <EmbeddedResource Remove="Features\**" />
+    <EmbeddedResource Remove="invoices\**" />
+    <None Remove="Features\**" />
+    <None Remove="invoices\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Assets\company_logo.jpg" />
+    <Content Include="Assets\company_logo.jpg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapr.AspNetCore" Version="1.18.4" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\aspire\ServiceDefaults\ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\Shared\Persistence\Shared.Persistence.csproj" />
+    <ProjectReference Include="..\Application\Jobs.Application.csproj" />
+    <ProjectReference Include="..\Infrastructure\Jobs.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,3 @@
+﻿Comandos para iniciar Keycloak en modo de desarrollo con un usuario administrador predefinido y un realm importado.
+
+podman run --name keycloak-local -p 8080:8080 -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:26.6.4 start-dev --import-realm .

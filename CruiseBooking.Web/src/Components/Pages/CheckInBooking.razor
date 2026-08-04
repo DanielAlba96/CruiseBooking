@@ -1,0 +1,17 @@
+@page "/check-in/booking/{BookingId:int}"
+@attribute [Authorize]
+
+<PageTitle>Check-in - Cruceros Marejada</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large">
+    <MudStack Row="true" Class="mt-4">
+        <MudButton Variant="Variant.Text"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.ArrowBack"
+                   Href="/my-bookings">
+            Atrás
+        </MudButton>
+    </MudStack>
+</MudContainer>
+
+<CheckInView Gateway="_gateway" />

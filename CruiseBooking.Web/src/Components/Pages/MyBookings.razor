@@ -1,0 +1,354 @@
+@page "/my-bookings"
+@using CruiseBooking.Integrations.Models
+
+@attribute [Authorize]
+
+<PageTitle>Mis reservas - Cruceros Marejada</PageTitle>
+
+@if (_isLoadingBookings)
+{
+    <MudContainer MaxWidth="MaxWidth.Large">
+        <MudStack Class="mt-8" AlignItems="AlignItems.Center">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            <MudText Typo="Typo.body1">Cargando tus reservas...</MudText>
+        </MudStack>
+    </MudContainer>
+}
+else if (_bookingsLoadError)
+{
+    <MudContainer MaxWidth="MaxWidth.Medium">
+        <MudStack Class="mt-8">
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+                <MudStack Spacing="2">
+                    <MudText>@_bookingsErrorMessage</MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RetryLoadBookingsAsync">
+                        Reintentar
+                    </MudButton>
+                </MudStack>
+            </MudAlert>
+        </MudStack>
+    </MudContainer>
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.False">
+        <MudStack Class="mt-8 mb-8" Spacing="4">
+            <MudPaper Class="pa-4">
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.h4" Color="Color.Primary">Mis reservas</MudText>
+                    <MudText Typo="Typo.body1">Consulta el listado de tus reservas y su detalle completo.</MudText>
+                </MudStack>
+            </MudPaper>
+
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="pa-4" Style="height: 100%;">
+                        <MudStack Spacing="3">
+                            <MudStack Row="true" Justify="Justify.FlexEnd">
+                                <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="RetryLoadBookingsAsync">
+                                    Actualizar
+                                </MudButton>
+                            </MudStack>
+
+                            @if (_bookings.Count == 0)
+                            {
+                                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                                    Aun no tienes reservas registradas.
+                                </MudAlert>
+                            }
+                            else
+                            {
+                                @foreach (var booking in _bookings)
+                                {
+                                    <MudPaper Class="pa-4" Style="@GetBookingCardStyle(booking.Id)" @onclick="async () => await SelectBookingAsync(booking.Id)">
+                                            <MudStack Spacing="2">
+                                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                                                    <MudText Typo="Typo.h6" Color="Color.Primary">@booking.Name</MudText>
+                                                    <MudChip T="string" Variant="Variant.Filled" Color="@GetStatusColor(booking.Status)" Style="@GetStatusStyle(booking.Status)">
+                                                        @GetStatusText(booking.Status)
+                                                    </MudChip>
+                                                </MudStack>
+                                            <MudGrid Spacing="2">
+                                                <MudItem xs="6">
+                                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Salida</MudText>
+                                                    <MudText Typo="Typo.body2">@FormatDate(booking.StartDate)</MudText>
+                                                </MudItem>
+                                                <MudItem xs="6">
+                                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Regreso</MudText>
+                                                    <MudText Typo="Typo.body2">@FormatDate(booking.EndDate)</MudText>
+                                                </MudItem>
+                                            </MudGrid>
+                                        </MudStack>
+                                    </MudPaper>
+                                }
+                            }
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="8">
+                    <MudPaper Class="pa-4" Style="height: 100%;">
+                        @if (_selectedBookingId is null)
+                        {
+                            <MudStack Class="py-12" AlignItems="AlignItems.Center" Justify="Justify.Center" Spacing="2">
+                                <MudIcon Icon="@Icons.Material.Outlined.EventNote" Size="Size.Large" Color="Color.Primary" />
+                                <MudText Typo="Typo.h6">Selecciona una reserva para ver el detalle</MudText>
+                            </MudStack>
+                        }
+                        else if (_isLoadingDetail)
+                        {
+                            <MudStack Class="py-12" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                                <MudText Typo="Typo.body1">Cargando detalle de la reserva...</MudText>
+                            </MudStack>
+                        }
+                        else if (_isDetailUserNotRegistered)
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                                <MudStack Spacing="2">
+                                    <MudText>Tu perfil de cliente no esta disponible para consultar esta reserva.</MudText>
+                                    <MudStack Row="true" Spacing="2">
+                                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="@_keycloakAccountUrl">
+                                            Editar perfil
+                                        </MudButton>
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="RetrySelectedBookingAsync">
+                                            Reintentar
+                                        </MudButton>
+                                    </MudStack>
+                                </MudStack>
+                            </MudAlert>
+                        }
+                        else if (_detailNotFound)
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                                <MudStack Spacing="2">
+                                    <MudText>La reserva seleccionada ya no existe o no pertenece a tu usuario.</MudText>
+                                    <MudText Typo="Typo.body2">Puedes seleccionar otra reserva desde el listado.</MudText>
+                                </MudStack>
+                            </MudAlert>
+                        }
+                        else if (_detailLoadError)
+                        {
+                            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+                                <MudStack Spacing="2">
+                                    <MudText>@_detailErrorMessage</MudText>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RetrySelectedBookingAsync">
+                                        Reintentar
+                                    </MudButton>
+                                </MudStack>
+                            </MudAlert>
+                        }
+                        else if (_selectedBooking is not null)
+                        {
+                            <MudStack Spacing="4">
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                                    <MudStack Spacing="1">
+                                        <MudText Typo="Typo.h4" Color="Color.Primary">@_selectedBooking.Name</MudText>
+                                        <MudText Typo="Typo.body1">@_selectedBooking.Code</MudText>
+                                        <MudChip T="string" Variant="Variant.Filled" Color="@GetStatusColor(_selectedBooking.Status)" Style="@GetStatusStyle(_selectedBooking.Status)" Class="mt-1">
+                                            @GetStatusText(_selectedBooking.Status)
+                                        </MudChip>
+                                    </MudStack>
+                                    <MudStack Spacing="2" AlignItems="AlignItems.End">
+                                        @if (_selectedBooking.Status is BookingStatus.PagoPendiente or BookingStatus.Creada)
+                                        {
+                                            <MudButton Variant="Variant.Outlined" Color="Color.Warning" Href="@($"/pay-booking/{_selectedBooking.Id}")">
+                                                <span>Pagar reserva</span>
+                                            </MudButton>
+                                        }
+                                        @if (_selectedBooking.Status == BookingStatus.CheckinPendiente
+                                            && _selectedBooking.CheckInStartDate <= DateTime.UtcNow)
+                                        {
+                                            <MudButton Variant="Variant.Outlined" Color="Color.Warning"
+                                                       Href="@($"/check-in/booking/{_selectedBooking.Id}")">
+                                                <span>Realizar check-in</span>
+                                            </MudButton>
+                                        }
+                                        @if (CanCancelBooking(_selectedBooking))
+                                        {
+                                            <MudButton Variant="Variant.Outlined"
+                                                       Color="Color.Error"
+                                                       OnClick="CancelSelectedBookingAsync"
+                                                       Disabled="@_isCancelingBooking">
+                                                @if (_isCancelingBooking)
+                                                {
+                                                    <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" />
+                                                    <span>Cancelando...</span>
+                                                }
+                                                else
+                                                {
+                                                    <span>Cancelar reserva</span>
+                                                }
+                                            </MudButton>
+                                        }
+                                    </MudStack>
+                                </MudStack>
+
+                                @if (_selectedBooking.Status == BookingStatus.Creada)
+                                {
+                                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                                        El pago se realizara automaticamente el @FormatDate(_selectedBooking.PaymentStartDate)
+                                        usando el metodo de pago activo en su cuenta.
+                                    </MudAlert>
+                                }
+                                @if (_selectedBooking.Status == BookingStatus.PagoPendiente)
+                                {
+                                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                                        Debe realizar el pago manualmente antes del @FormatDate(_selectedBooking.CheckInStartDate).
+                                        Si no se completa el pago antes de esa fecha, la reserva se cancelara automaticamente.
+                                    </MudAlert>
+                                }
+                                @if (_selectedBooking.Status == BookingStatus.CheckinPendiente)
+                                {
+                                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                                        Si no realiza el check-in antes del @FormatDate(_selectedBooking.StartDate),
+                                        deberá realizarlo en el puerto antes del embarque.
+                                    </MudAlert>
+                                }
+                                @if (_selectedBooking.Status == BookingStatus.Completada)
+                                {
+                                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                                        El pago y el check-in de esta reserva se han completado correctamente y no necesita hacer nada más. ¡Disfrute de su viaje!.
+                                    </MudAlert>
+                                }
+
+                                <MudText Typo="Typo.body1">@_selectedBooking.Description</MudText>
+
+                                <MudGrid Spacing="3">
+                                    <MudItem xs="12" sm="6">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Destino</MudText>
+                                        <MudText Typo="Typo.body1">@_selectedBooking.Destination</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Puerto de embarque</MudText>
+                                        <MudText Typo="Typo.body1">@_selectedBooking.OriginPort</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Itinerario</MudText>
+                                        <MudText Typo="Typo.body1">@_selectedBooking.Itinerary</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Barco</MudText>
+                                        <MudText Typo="Typo.body1">@_selectedBooking.ShipName</MudText>
+                                        <MudText Typo="Typo.body2">Empresa: @_selectedBooking.ShipCompany</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Duracion</MudText>
+                                        <MudText Typo="Typo.body1">@_selectedBooking.DurationInDays dias</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Fecha de salida</MudText>
+                                        <MudText Typo="Typo.body1">@FormatDate(_selectedBooking.StartDate)</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Fecha de regreso</MudText>
+                                        <MudText Typo="Typo.body1">@FormatDate(_selectedBooking.EndDate)</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Fecha de pago automático</MudText>
+                                        <MudText Typo="Typo.body1">@FormatDate(_selectedBooking.PaymentStartDate)</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Fecha de creación</MudText>
+                                        <MudText Typo="Typo.body1">@FormatDateTime(_selectedBooking.CreatedAt)</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Fecha de pago realizado</MudText>
+                                        <MudText Typo="Typo.body1">@FormatNullableDateTime(_selectedBooking.ChargedAt)</MudText>
+                                    </MudItem>
+                                    @if (_selectedBooking.Status == BookingStatus.Cancelada && _selectedBooking.ChargedAt is not null)
+                                    {
+                                        <MudItem xs="12" sm="6">
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">Fecha de reembolso</MudText>
+                                            <MudText Typo="Typo.body1">@FormatNullableDateTime(_selectedBooking.RefundedAt)</MudText>
+                                        </MudItem>
+                                    }
+                                </MudGrid>
+
+                                <MudDivider />
+
+                                <MudStack Spacing="2">
+                                    <MudText Typo="Typo.h5" Color="Color.Primary">Camarotes</MudText>
+                                    @if (_selectedBooking.Cabins.Count == 0)
+                                    {
+                                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                                            Esta reserva no incluye camarotes asociados.
+                                        </MudAlert>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var cabin in _selectedBooking.Cabins)
+                                        {
+                                            <MudCard>
+                                                <MudCardHeader>
+                                                    <CardHeaderContent>
+                                                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                                            <MudStack Spacing="0">
+                                                                <MudText Typo="Typo.h6">Camarote</MudText>
+                                                                <MudText Typo="Typo.body2">@cabin.TypeName</MudText>
+                                                            </MudStack>
+                                                            <MudText Typo="Typo.h6" Color="Color.Primary">@FormatPrice(GetCabinPrice(cabin))</MudText>
+                                                        </MudStack>
+                                                    </CardHeaderContent>
+                                                </MudCardHeader>
+                                                <MudCardContent>
+                                                    <MudStack Spacing="2">
+                                                        <MudText Typo="Typo.body2">@cabin.TypeDescription</MudText>
+                                                    </MudStack>
+                                                </MudCardContent>
+                                            </MudCard>
+                                        }
+                                    }
+                                </MudStack>
+
+                                <MudDivider />
+
+                                <MudStack Spacing="2">
+                                    <MudText Typo="Typo.h5" Color="Color.Primary">Extras</MudText>
+                                    @if (_selectedBooking.Extras.Count == 0)
+                                    {
+                                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                                            Esta reserva no incluye extras.
+                                        </MudAlert>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var extra in _selectedBooking.Extras)
+                                        {
+                                            <MudPaper Class="pa-4 border-solid border-2 mud-border-primary">
+                                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                                                    <MudStack Spacing="1">
+                                                        <MudText Typo="Typo.h6">@extra.Name</MudText>
+                                                        <MudText Typo="Typo.body2">@extra.Description</MudText>
+                                                    </MudStack>
+                                                    <MudText Typo="Typo.body1" Color="Color.Primary"><strong>@FormatPrice(extra.Price)</strong></MudText>
+                                                </MudStack>
+                                            </MudPaper>
+                                        }
+                                    }
+                                </MudStack>
+
+                                <MudDivider />
+
+                                <MudPaper Class="pa-4 border-solid border-2 mud-border-primary">
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                        <MudText Typo="Typo.h6"><strong>Subtotal</strong></MudText>
+                                        <MudText Typo="Typo.h6" Color="Color.Primary"><strong>@FormatPrice(_baseAmount)</strong></MudText>
+                                    </MudStack>
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                        <MudText Typo="Typo.h6"><strong>Impuestos @_taxRate%</strong></MudText>
+                                        <MudText Typo="Typo.h6" Color="Color.Primary"><strong>@FormatPrice(_taxAmount)</strong></MudText>
+                                    </MudStack>
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                        <MudText Typo="Typo.h6"><strong>Precio total de la reserva</strong></MudText>
+                                        <MudText Typo="Typo.h6" Color="Color.Primary"><strong>@FormatPrice(_totalAmount)</strong></MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudStack>
+                        }
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudStack>
+    </MudContainer>
+}

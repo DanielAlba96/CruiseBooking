@@ -1,0 +1,17 @@
+﻿@inject NavigationManager Navigation
+
+<MudText Typo="Typo.subtitle2">Redirigiendo para iniciar sesión...</MudText>
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        var relative = $"/{Navigation.ToBaseRelativePath(Navigation.Uri)}";
+        var returnUrl = string.IsNullOrEmpty(relative) ? "/" : relative;
+
+        var url = $"/login?returnUrl={Uri.EscapeDataString(returnUrl)}";
+        Navigation.NavigateTo(url, forceLoad: true);
+    }
+}

@@ -1,0 +1,118 @@
+@inject IJSRuntime JS
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.CreditCard" Color="Color.Primary" />
+                <MudText Color="Color.Primary" Typo="Typo.h5">@(ShowPayBookingHint ? "Datos de pago" : "Tarjetas registradas")</MudText>
+            </MudStack>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        @if (!_useNewCard)
+        {
+            @if (ShowPayBookingHint)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Filled" Class="mb-4">
+                    Selecciona el método de pago con el que quieres pagar la reserva
+                </MudAlert>
+            }
+
+            @if (ShowAsSelector)
+            {
+                <MudRadioGroup T="string" @bind-Value="_selectedPaymentMethodId" @bind-Value:after="OnSelectedPaymentMethodChangedAsync">
+                    @foreach (var method in _paymentMethods)
+                    {
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                            <MudRadio T="string" Value="@method.Id" Color="Color.Primary" Class="d-flex">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                                    <CardBrandIcon Brand="@method.Card?.Brand" />
+                                    <MudStack Spacing="0">
+                                        <MudText Typo="Typo.body1">@DescribePaymentMethod(method)</MudText>
+                                        @if (!string.IsNullOrWhiteSpace(method.Card?.Issuer))
+                                        {
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">@method.Card!.Issuer</MudText>
+                                        }
+                                    </MudStack>
+                                </MudStack>
+                            </MudRadio>
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           aria-label="Eliminar método de pago"
+                                           Disabled="@(_deletingPaymentMethodId is not null)"
+                                           OnClick="@(() => DeletePaymentMethodAsync(method.Id))" />
+                        </MudStack>
+                    }
+                </MudRadioGroup>
+            }
+            else
+            {
+                @foreach (var method in _paymentMethods)
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <CardBrandIcon Brand="@method.Card?.Brand" />
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body1">@DescribePaymentMethod(method)</MudText>
+                                @if (!string.IsNullOrWhiteSpace(method.Card?.Issuer))
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@method.Card!.Issuer</MudText>
+                                }
+                            </MudStack>
+                        </MudStack>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                       Color="Color.Error"
+                                       Size="Size.Small"
+                                       aria-label="Eliminar método de pago"
+                                       Disabled="@(_deletingPaymentMethodId is not null)"
+                                       OnClick="@(() => DeletePaymentMethodAsync(method.Id))" />
+                    </MudStack>
+                }
+            }
+
+            <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-4">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ShowNewCardAsync">
+                    @(ShowPayBookingHint ? "Usar otra tarjeta" : "Añadir tarjeta")
+                </MudButton>
+            </MudStack>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Filled" Class="mb-4">
+                Introduce los datos de tu tarjeta de forma segura
+            </MudAlert>
+
+            <div id="payment-element"></div>
+
+            @if (!string.IsNullOrEmpty(_stripeError))
+            {
+                <MudText Color="Color.Error" Typo="Typo.body2" Class="mt-2">@_stripeError</MudText>
+            }
+
+            @if (_paymentMethods.Count > 0 || ShowSaveNewCardButton)
+            {
+                <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-4" Spacing="2">
+                    @if (_paymentMethods.Count > 0)
+                    {
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   OnClick="CancelNewCardAsync">
+                            Cancelar
+                        </MudButton>
+                    }
+                    @if (ShowSaveNewCardButton)
+                    {
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Disabled="@(!_stripeReady || _isSavingNewCard)"
+                                   OnClick="SaveNewCardAsync">
+                            Guardar tarjeta
+                        </MudButton>
+                    }
+                </MudStack>
+            }
+        }
+    </MudCardContent>
+</MudCard>

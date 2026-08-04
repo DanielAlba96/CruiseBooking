@@ -1,0 +1,74 @@
+<MudDialog Class="rounded-lg">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+            <MudPaper Elevation="0"
+                      Class="d-flex align-center justify-center rounded-circle flex-none"
+                      Style="width: 44px; height: 44px; background-color: rgba(201, 64, 64, 0.14);">
+                <MudIcon Icon="@Icons.Material.Rounded.EventBusy" Color="Color.Error" />
+            </MudPaper>
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.h6">Cancelar reserva</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Esta accion no se puede deshacer</MudText>
+            </MudStack>
+        </MudStack>
+    </TitleContent>
+
+    <DialogContent>
+        <MudStack Spacing="4" Class="py-2">
+            @if (!string.IsNullOrWhiteSpace(BookingName))
+            {
+                <MudPaper Elevation="0"
+                          Class="pa-4 rounded-lg"
+                          Style="background-color: rgba(114, 172, 230, 0.10); border: 1px solid var(--mud-palette-divider);">
+                    <MudStack Spacing="3">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudText Typo="Typo.subtitle1" Color="Color.Primary">@BookingName</MudText>
+                            @if (!string.IsNullOrWhiteSpace(BookingCode))
+                            {
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" Class="ma-0">
+                                    @BookingCode
+                                </MudChip>
+                            }
+                        </MudStack>
+
+                        @if (!string.IsNullOrWhiteSpace(StartDate) || !string.IsNullOrWhiteSpace(EndDate))
+                        {
+                            <MudGrid Spacing="2">
+                                <MudItem xs="6">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Salida</MudText>
+                                    <MudText Typo="Typo.body2">@StartDate</MudText>
+                                </MudItem>
+                                <MudItem xs="6">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Regreso</MudText>
+                                    <MudText Typo="Typo.body2">@EndDate</MudText>
+                                </MudItem>
+                            </MudGrid>
+                        }
+                    </MudStack>
+                </MudPaper>
+            }
+
+            <MudText Typo="Typo.body2">
+                Vamos a cancelar esta reserva y liberar los camarotes asociados.
+                Si ya has realizado el pago, recibirás el reembolso en el metodo de pago utilizado.
+            </MudText>
+
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="rounded-lg">
+                Una vez cancelada no podrás recuperar la reserva ni sus precios actuales.
+            </MudAlert>
+        </MudStack>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel">
+            Volver
+        </MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Error"
+                   DropShadow="false"
+                   StartIcon="@Icons.Material.Rounded.EventBusy"
+                   OnClick="Confirm">
+            Si, cancelar reserva
+        </MudButton>
+    </DialogActions>
+</MudDialog>

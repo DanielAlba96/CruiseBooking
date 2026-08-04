@@ -1,0 +1,111 @@
+<MudContainer MaxWidth="MaxWidth.Large">
+    <MudStack Class="mt-8 mb-8" Spacing="4">
+
+        @if (_isLoading)
+        {
+            <MudStack Class="py-12" AlignItems="AlignItems.Center" Spacing="2">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                <MudText Typo="Typo.body1">Cargando datos del check-in...</MudText>
+            </MudStack>
+        }
+        else if (_loadError)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+                <MudStack Spacing="2">
+                    <MudText>@_errorMessage</MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RetryLoadAsync">
+                        Reintentar
+                    </MudButton>
+                </MudStack>
+            </MudAlert>
+        }
+        else if (_checkIn is not null)
+        {
+            <MudPaper Class="pa-4">
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.h4" Color="Color.Primary">Check-in para el crucero @_checkIn.CruiseName</MudText>
+                    <MudText Typo="Typo.body1">@_checkIn.CruiseDescription</MudText>
+                </MudStack>
+            </MudPaper>
+
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="4">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Puerto de embarque</MudText>
+                    <MudText Typo="Typo.body1">@_checkIn.Origin</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Fecha de salida</MudText>
+                    <MudText Typo="Typo.body1">@_checkIn.StartDate.ToString("dd/MM/yyyy")</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Fecha de regreso</MudText>
+                    <MudText Typo="Typo.body1">@_checkIn.EndDate.ToString("dd/MM/yyyy")</MudText>
+                </MudItem>             
+            </MudGrid>
+
+            <MudText Typo="Typo.h5" Color="Color.Primary" Class="mt-4">Camarotes</MudText>
+
+            @foreach (var cabin in _checkIn.Cabins)
+            {
+                var isFull = cabin.Passengers.Count >= cabin.Occupancy;
+
+                <MudPaper Class="pa-4">
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.h6">@cabin.CabinType</MudText>
+                                <MudText Typo="Typo.body2">@cabin.CabinDescription</MudText>
+                            </MudStack>
+                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined">
+                                    @cabin.Passengers.Count / @cabin.Occupancy pasajero(s)
+                                </MudChip>
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Disabled="@isFull"
+                                           Href="@Gateway.PassengersUrl(cabin.BookingCabinId)">
+                                    Añadir pasajero
+                                </MudButton>
+                            </MudStack>
+                        </MudStack>
+
+                        @if (cabin.Passengers.Count > 0)
+                        {
+                            <MudDivider />
+                            @foreach (var passenger in cabin.Passengers)
+                            {
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                    <MudText Typo="Typo.body1">@passenger.Name @passenger.Surname · @passenger.Dni</MudText>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                   Color="Color.Error"
+                                                   Size="Size.Small"
+                                                   Disabled="@(_removingPassengerId == passenger.Id)"
+                                                   OnClick="@(() => RemovePassengerAsync(passenger.Id))" />
+                                </MudStack>
+                            }
+                        }
+                    </MudStack>
+                </MudPaper>
+            }
+
+            <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-4">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Success"
+                           Size="Size.Large"
+                           StartIcon="@Icons.Material.Filled.Check"
+                           Disabled="@(!AllCabinsFull || _completing)"
+                           OnClick="CompleteCheckInAsync">
+                    Finalizar check-in
+                </MudButton>
+            </MudStack>
+
+            @if (!AllCabinsFull)
+            {
+                <MudText Typo="Typo.caption" Align="Align.Right" Color="Color.Secondary">
+                    Registra todos los pasajeros de cada camarote para poder finalizar el check-in.
+                </MudText>
+            }
+        }
+
+    </MudStack>
+</MudContainer>

@@ -1,0 +1,151 @@
+@page "/booking-summary"
+
+@attribute [Authorize]
+
+<PageTitle>Resumen de la reserva - Cruceros Marejada</PageTitle>
+
+@if (_loadError)
+{
+    <MudContainer MaxWidth="MaxWidth.Large">
+        <MudStack Class="mt-8">
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-4">
+                <MudStack>
+                    <MudText>@_errorMessage</MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RetryLoadAsync" Class="mt-2">
+                        Reintentar
+                    </MudButton>
+                </MudStack>
+            </MudAlert>
+        </MudStack>
+    </MudContainer>
+}
+else if (_bookingContainer.Cruise is null)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.Large">
+        <MudStack Class="mt-8 mb-8">
+
+            <MudPaper Class="mud-primary pa-4">
+                <MudText Align="Align.Center" Typo="Typo.h4">Resumen de la reserva</MudText>
+            </MudPaper>
+
+            <MudCard Class="mt-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.DirectionsBoat" Color="Color.Primary" />
+                            <MudText Color="Color.Primary" Typo="Typo.h5">@_bookingContainer.Cruise.Name</MudText>
+                        </MudStack>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid>
+                        <MudItem xs="12" sm="4">
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary"><strong>Puerto de salida</strong></MudText>
+                                <MudText Typo="Typo.body1">@_bookingContainer.Cruise.OriginPort</MudText>
+                            </MudStack>
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary"><strong>Fecha de salida</strong></MudText>
+                                <MudText Typo="Typo.body1">@_bookingContainer.Cruise.StartDate.ToString("dd/MM/yyyy HH:mm")</MudText>
+                            </MudStack>
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary"><strong>Duración</strong></MudText>
+                                <MudText Typo="Typo.body1">@_bookingContainer.Cruise.DurationInDays días</MudText>
+                            </MudStack>
+                        </MudItem>
+                    </MudGrid>
+                </MudCardContent>
+            </MudCard>
+
+            <MudStack Class="mt-6" Spacing="1">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.Cabin" Color="Color.Primary" />
+                    <MudText Color="Color.Primary" Typo="Typo.h5">Camarotes reservados</MudText>
+                </MudStack>
+                <MudDivider Class="mud-border-divider" />
+            </MudStack>
+
+            @foreach (var cabin in _bookingContainer.SelectedCabins)
+            {
+                <MudCard Class="mt-3">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudText Color="Color.Secondary" Typo="Typo.h6">@cabin.Name</MudText>
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">
+                                        @cabin.CurrentOccupancy pasajero(s)
+                                    </MudChip>
+                                </MudStack>
+                                <MudText Typo="Typo.h6" Color="Color.Primary">@cabin.CurrentPrice €</MudText>
+                            </MudStack>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                </MudCard>
+            }
+
+            @if (_bookingContainer.SelectedExtras.Any())
+            {
+                <MudStack Class="mt-6" Spacing="1">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.AddCircleOutline" Color="Color.Primary" />
+                        <MudText Color="Color.Primary" Typo="Typo.h5">Extras contratados</MudText>
+                    </MudStack>
+                    <MudDivider Class="mud-border-divider" />
+                </MudStack>
+
+                @foreach (var extra in _bookingContainer.SelectedExtras)
+                {
+                    <MudPaper Class="pa-3 mt-2 border-solid border-2 mud-border-primary">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudText Typo="Typo.body1">@extra.Name</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Primary"><strong>@extra.Price €</strong></MudText>
+                        </MudStack>
+                    </MudPaper>
+                }
+            }
+
+            <MudPaper Class="pa-4 mt-6 border-solid border-2 mud-border-primary">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6"><strong>Subtotal</strong></MudText>
+                    <MudText Typo="Typo.h6" Color="Color.Primary"><strong>@_baseAmount €</strong></MudText>
+                </MudStack>
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6"><strong>Impuestos @_taxRate%</strong></MudText>
+                    <MudText Typo="Typo.h6" Color="Color.Primary"><strong>@(_taxAmount) €</strong></MudText>
+                </MudStack>
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6"><strong>Precio total de la reserva</strong></MudText>
+                    <MudText Typo="Typo.h6" Color="Color.Primary"><strong>@_totalAmount €</strong></MudText>
+                </MudStack>
+            </MudPaper>
+
+            <div class="mt-6">
+                <PaymentMethodSelector @ref="_paymentSelector" OnStateChanged="StateHasChanged" />
+            </div>
+
+            <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mt-4">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Secondary"
+                           OnClick="NavigateBackToCabins">
+                    Modificar reserva
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="_isLoading || _paymentSelector is null || !_paymentSelector.IsReady"
+                           OnClick="CompleteBooking">
+                    Confirmar reserva
+                </MudButton>
+            </MudStack>
+
+        </MudStack>
+    </MudContainer>
+}
