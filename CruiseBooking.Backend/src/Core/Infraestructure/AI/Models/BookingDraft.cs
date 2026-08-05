@@ -17,6 +17,14 @@ internal sealed class BookingDraft
 
     /// <summary>Lista de extras seleccionados en el borrador.</summary>
     public List<DraftExtra> Extras { get; } = [];
+
+    internal void Clear()
+    {
+        CruiseDateId = 0;
+        ShipId = 0;
+        Cabins.Clear();
+        Extras.Clear();
+    }
 }
 
 /// <summary>

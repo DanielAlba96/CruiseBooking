@@ -5,8 +5,8 @@ using Shared.Domain.Services;
 using Core.Infrastructure.AI.Models;
 using Core.Infrastructure.AI.Tools;
 using Microsoft.Extensions.Caching.Memory;
-using OllamaSharp;
-using OllamaSharp.Models.Chat;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 
 namespace Core.Infrastructure.AI;
 
@@ -15,35 +15,39 @@ namespace Core.Infrastructure.AI;
 /// Mantiene sesiones en caché, construye herramientas de búsqueda y manejo de borradores,
 /// y orquesta la interacción con el modelo de lenguaje.
 /// </summary>
-public class OllamaChatManager(
-    IOllamaApiClient ollamaClient,
-    IMemoryCache cache,
-    ICruiseRepository cruiseRepository,
-    ICabinRepository cabinRepository,
-    IExtraRepository extraRepository,
-    IMediator mediator,
-    IJobService jobService,
-    BookingDraftStore draftStore,
-    UserInfo userInfo)
-    : IChatManager
+public class OllamaChatManager: IChatManager
 {
-    private readonly IOllamaApiClient _ollamaClient = ollamaClient;
-    private readonly IMemoryCache _cache = cache;
-    private readonly ICruiseRepository _cruiseRepository = cruiseRepository;
-    private readonly ICabinRepository _cabinRepository = cabinRepository;
-    private readonly IExtraRepository _extraRepository = extraRepository;
-    private readonly IMediator _mediator = mediator;
-    private readonly IJobService _jobService = jobService;
-    private readonly BookingDraftStore _draftStore = draftStore;
-    private readonly UserInfo _userInfo = userInfo;
+    private readonly IChatClient _chatClient;
+    private readonly IMemoryCache _cache;
+    private readonly ICruiseRepository _cruiseRepository;
+    private readonly ICabinRepository _cabinRepository;
+    private readonly IExtraRepository _extraRepository;
+    private readonly IMediator _mediator;
+    private readonly IJobService _jobService;
+    private readonly BookingDraftStore _draftStore;
+    private readonly UserInfo _userInfo;
 
-    private readonly List<Tool> _readOnlyTools =
-    [
-        new SearchCruisesTool(cruiseRepository),
-        new GetCruiseDatesTool(cruiseRepository),
-        new GetAvailableCabinsTool(cabinRepository),
-        new GetExtrasTool(extraRepository)
-    ];
+    public OllamaChatManager(
+        IChatClient chatClient,
+        IMemoryCache cache,
+        ICruiseRepository cruiseRepository,
+        ICabinRepository cabinRepository,
+        IExtraRepository extraRepository,
+        IMediator mediator,
+        IJobService jobService,
+        BookingDraftStore draftStore,
+        UserInfo userInfo)
+    {
+        _chatClient = chatClient;
+        _cache = cache;
+        _cruiseRepository = cruiseRepository;
+        _cabinRepository = cabinRepository;
+        _extraRepository = extraRepository;
+        _mediator = mediator;
+        _jobService = jobService;
+        _draftStore = draftStore;
+        _userInfo = userInfo;
+    }
 
     /// <summary>
     /// Inicia una conversación de chat con el modelo Ollama, procesando un mensaje del usuario.
@@ -55,50 +59,90 @@ public class OllamaChatManager(
     /// <returns>Enumeración asincrónica de tokens de salida del modelo en formato string.</returns>
     public async IAsyncEnumerable<string> StartChatStreamAsync(Guid sessionId, string message, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
-        var chat = GetOrCreateSession(sessionId);
-        var tools = new List<Tool>(_readOnlyTools);
-        tools.AddRange(BuildDraftTools(sessionId));
+        var draft = GetOrCreateDraft(sessionId);
+        var agent = BuildAgent(draft);
+        var session = await GetOrCreateSession(agent, sessionId);
 
         var inThinkBlock = false;
 
-        await foreach (var outputToken in chat.SendAsync(message, tools, null, cancellationToken: ct).Where(t => !string.IsNullOrEmpty(t)))
+        await foreach (var outputToken in agent.RunStreamingAsync(message, session, cancellationToken: ct).Where(t => !string.IsNullOrEmpty(t.Text)))
         {
-            if (outputToken.StartsWith("thought <channel|>", StringComparison.Ordinal))
+            if (outputToken.Text.StartsWith("thought <channel|>", StringComparison.Ordinal))
                 continue;
 
-            if (outputToken.Contains("<think>"))
+            if (outputToken.Text.Contains("<think>"))
                 inThinkBlock = true;
 
             if (!inThinkBlock)
-                yield return outputToken;
+                yield return outputToken.Text;
 
-            if (inThinkBlock && outputToken.Contains("</think>"))
+            if (inThinkBlock && outputToken.Text.Contains("</think>"))
                 inThinkBlock = false;
         }
     }
 
-    private IEnumerable<Tool> BuildDraftTools(Guid sessionId) =>
-    [
-        new StartBookingTool(_cruiseRepository, _draftStore, sessionId),
-        new AddCabinTool(_cabinRepository, _jobService, _userInfo, _draftStore, sessionId),
-        new RemoveCabinTool(_cabinRepository, _userInfo, _draftStore, sessionId),
-        new AddExtraTool(_extraRepository, _draftStore, sessionId),
-        new RemoveExtraTool(_draftStore, sessionId),
-        new GetBookingSummaryTool(_cabinRepository, _extraRepository, _draftStore, sessionId),
-        new RestartBookingTool(_draftStore, sessionId, _cabinRepository, _userInfo),
-        new ConfirmBookingTool(_draftStore, sessionId, _mediator)
-    ];
-
-    private Chat GetOrCreateSession(Guid sessionId)
+    /// <summary>
+    /// Construye el agente con las herramientas enlazadas al borrador de la sesión indicada.
+    /// El borrador solo se conoce al recibir el mensaje, por lo que el agente se arma por petición;
+    /// el historial de la conversación vive en la <see cref="AgentSession"/> cacheada, no en el agente.
+    /// </summary>
+    /// <param name="draft">Borrador de reserva de la sesión al que quedan enlazadas las herramientas.</param>
+    /// <returns>El agente listo para atender la conversación.</returns>
+    private AIAgent BuildAgent(BookingDraft draft)
     {
-        return _cache.GetOrCreate(sessionId, entry =>
+        var cruiseTools = new CruiseTools(_cruiseRepository, _cabinRepository, _extraRepository);
+        var bookingTools = new BookingTools(_cruiseRepository, _cabinRepository, _extraRepository, _mediator, _jobService, _userInfo, draft);
+
+        var chatOptions = new ChatOptions
+        {
+            Instructions = BuildSystemPrompt(),
+            Tools = [
+                AIFunctionFactory.Create(cruiseTools.SearchCruises, new AIFunctionFactoryOptions { Name = "search_cruises" }),
+                AIFunctionFactory.Create(cruiseTools.GetCruiseDates, new AIFunctionFactoryOptions { Name = "get_cruise_dates" }),
+                AIFunctionFactory.Create(cruiseTools.GetAvailableCabins, new AIFunctionFactoryOptions { Name = "get_available_cabins" }),
+                AIFunctionFactory.Create(cruiseTools.GetExtras, new AIFunctionFactoryOptions { Name = "get_extras" }),
+                AIFunctionFactory.Create(bookingTools.StartBooking, new AIFunctionFactoryOptions { Name = "start_booking" }),
+                AIFunctionFactory.Create(bookingTools.AddCabin, new AIFunctionFactoryOptions { Name = "add_cabin" }),
+                AIFunctionFactory.Create(bookingTools.RemoveCabin, new AIFunctionFactoryOptions { Name = "remove_cabin" }),
+                AIFunctionFactory.Create(bookingTools.AddExtra, new AIFunctionFactoryOptions { Name = "add_extra" }),
+                AIFunctionFactory.Create(bookingTools.RemoveExtra, new AIFunctionFactoryOptions { Name = "remove_extra" }),
+                AIFunctionFactory.Create(bookingTools.GetBookingSummary, new AIFunctionFactoryOptions { Name = "get_booking_summary" }),
+                AIFunctionFactory.Create(bookingTools.RestartBooking, new AIFunctionFactoryOptions { Name = "restart_booking" }),
+                AIFunctionFactory.Create(bookingTools.ConfirmBooking, new AIFunctionFactoryOptions { Name = "confirm_booking" })
+                ],
+            RawRepresentationFactory = _ => new OllamaSharp.Models.Chat.ChatRequest { Think = false }
+        };
+
+        return _chatClient.AsAIAgent(new ChatClientAgentOptions
+        {
+            Name = "Asistente de reservas de cruceros",
+            ChatOptions = chatOptions
+        });
+    }
+
+    /// <summary>
+    /// Recupera el borrador de reserva de la sesión, creándolo si aún no existe, y refresca su expiración.
+    /// Vive en <see cref="BookingDraftStore"/> para sobrevivir entre peticiones HTTP sucesivas.
+    /// </summary>
+    /// <param name="sessionId">Identificador único de la sesión de chat del usuario.</param>
+    /// <returns>El borrador de la sesión.</returns>
+    private BookingDraft GetOrCreateDraft(Guid sessionId)
+    {
+        var draft = _draftStore.Get(sessionId) ?? new BookingDraft();
+        _draftStore.Set(sessionId, draft);
+
+        return draft;
+    }
+
+    private async Task<AgentSession> GetOrCreateSession(AIAgent agent, Guid sessionId)
+    {
+        var session = await _cache.GetOrCreateAsync(sessionId, async (entry) =>
         {
             entry.SlidingExpiration = TimeSpan.FromMinutes(10);
+            return await agent.CreateSessionAsync();
+        });
 
-            var chat = new Chat(_ollamaClient) { Think = false, AllowRecursiveToolCalls = true };
-            chat.Messages.Add(new Message(ChatRole.System, BuildSystemPrompt()));
-            return chat;
-        })!;
+        return session!;
     }
 
     private string BuildSystemPrompt() => $"""

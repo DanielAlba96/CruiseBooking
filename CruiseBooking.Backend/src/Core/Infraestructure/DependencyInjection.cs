@@ -5,6 +5,7 @@ using Core.Infrastructure.Services;
 using Core.Infrastructure.Workflows;
 using Core.Infrastructure.Workflows.Activities;
 using Dapr.Workflow;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -69,7 +70,7 @@ public static class DependencyInjection
         var ollamaOptions = builder.Configuration.GetSection(OllamaOptions.SectionName).Get<OllamaOptions>()
             ?? new OllamaOptions();
 
-        builder.Services.AddSingleton<IOllamaApiClient>(_ => new OllamaApiClient(new Uri(ollamaOptions.BaseUrl), ollamaOptions.Model));
+        builder.Services.AddSingleton<IChatClient>(_ => new OllamaApiClient(new Uri(ollamaOptions.BaseUrl), ollamaOptions.Model));
 
         return builder;
     }
