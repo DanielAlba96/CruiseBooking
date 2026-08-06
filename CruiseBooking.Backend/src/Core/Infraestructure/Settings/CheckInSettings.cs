@@ -1,9 +1,9 @@
-﻿namespace Core.Infrastructure.Options;
+﻿namespace Core.Infrastructure.Settings;
 
 /// <summary>
 /// Opciones de configuración para el proceso de check-in de pasajeros.
 /// </summary>
-public sealed class CheckInOptions
+public sealed class CheckInSettings
 {
     public const string SectionName = "CheckIn";
 

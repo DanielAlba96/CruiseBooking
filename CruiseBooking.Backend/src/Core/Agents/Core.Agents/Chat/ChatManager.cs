@@ -1,67 +1,65 @@
-﻿using Core.Application.Common.CQRS;
+﻿using Core.Application.Common.Exceptions;
 using Core.Application.Models;
 using Shared.Domain.Repositories;
 using Shared.Domain.Services;
-using Core.Infrastructure.AI.Models;
-using Core.Infrastructure.AI.Tools;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using System.Runtime.CompilerServices;
+using Core.Application.Common.CQRS;
+using Core.Agents.Tools;
 
-namespace Core.Infrastructure.AI;
+namespace Core.Agents.Chat;
 
 /// <summary>
-/// Gestor de chat con Ollama para guiar la reserva de cruceros de forma conversacional.
+/// Gestor de chat para guiar la reserva de cruceros de forma conversacional.
 /// Mantiene sesiones en caché, construye herramientas de búsqueda y manejo de borradores,
 /// y orquesta la interacción con el modelo de lenguaje.
 /// </summary>
-public class OllamaChatManager: IChatManager
+public class ChatManager(
+    IChatClient chatClient,
+    ICruiseRepository cruiseRepository,
+    ICabinRepository cabinRepository,
+    IExtraRepository extraRepository,
+    IJobService jobService,
+    ICacheService cacheService,
+    IMediator mediator,
+    UserInfo userInfo) : IChatManager
 {
-    private readonly IChatClient _chatClient;
-    private readonly IMemoryCache _cache;
-    private readonly ICruiseRepository _cruiseRepository;
-    private readonly ICabinRepository _cabinRepository;
-    private readonly IExtraRepository _extraRepository;
-    private readonly IMediator _mediator;
-    private readonly IJobService _jobService;
-    private readonly BookingDraftStore _draftStore;
-    private readonly UserInfo _userInfo;
-
-    public OllamaChatManager(
-        IChatClient chatClient,
-        IMemoryCache cache,
-        ICruiseRepository cruiseRepository,
-        ICabinRepository cabinRepository,
-        IExtraRepository extraRepository,
-        IMediator mediator,
-        IJobService jobService,
-        BookingDraftStore draftStore,
-        UserInfo userInfo)
-    {
-        _chatClient = chatClient;
-        _cache = cache;
-        _cruiseRepository = cruiseRepository;
-        _cabinRepository = cabinRepository;
-        _extraRepository = extraRepository;
-        _mediator = mediator;
-        _jobService = jobService;
-        _draftStore = draftStore;
-        _userInfo = userInfo;
-    }
+    private readonly IChatClient _chatClient = chatClient;
+    private readonly ICruiseRepository _cruiseRepository = cruiseRepository;
+    private readonly ICabinRepository _cabinRepository = cabinRepository;
+    private readonly IExtraRepository _extraRepository = extraRepository;
+    private readonly IJobService _jobService = jobService;
+    private readonly ICacheService _cacheService = cacheService;
+    private readonly IMediator _mediator = mediator;
+    private readonly UserInfo _userInfo = userInfo;
 
     /// <summary>
-    /// Inicia una conversación de chat con el modelo Ollama, procesando un mensaje del usuario.
+    /// Inicia una conversación de chat, procesando un mensaje del usuario.
     /// Retorna los tokens de salida del modelo filtrados, ocultando bloques de pensamiento.
     /// </summary>
     /// <param name="sessionId">Identificador único de la sesión de chat del usuario.</param>
     /// <param name="message">Mensaje de entrada del usuario a procesar.</param>
     /// <param name="ct">Token de cancelación para interrumpir la operación.</param>
     /// <returns>Enumeración asincrónica de tokens de salida del modelo en formato string.</returns>
-    public async IAsyncEnumerable<string> StartChatStreamAsync(Guid sessionId, string message, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    public async IAsyncEnumerable<string> StartChatStreamAsync(Guid sessionId, string message, [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var draft = GetOrCreateDraft(sessionId);
-        var agent = BuildAgent(draft);
-        var session = await GetOrCreateSession(agent, sessionId);
+        var agent = BuildAgent(sessionId);
+
+        var session = await _cacheService.GetAsync<AgentSession>($"chat:{sessionId}:state", CancellationToken.None);
+        if (session is not null)
+        {
+            var sessionUser = session.StateBag.GetValue<string>("userId");
+
+            if (sessionUser != _userInfo.Id.ToString())
+                throw new UnauthorizedException("La sesión de chat no pertenece al usuario actual.");
+        }
+        else
+        {
+            session = await agent.CreateSessionAsync(cancellationToken: ct);
+            session.StateBag.SetValue("sessionId", sessionId.ToString());
+            session.StateBag.SetValue("userId", _userInfo.Id.ToString());
+        }
 
         var inThinkBlock = false;
 
@@ -79,36 +77,31 @@ public class OllamaChatManager: IChatManager
             if (inThinkBlock && outputToken.Text.Contains("</think>"))
                 inThinkBlock = false;
         }
+
+        await _cacheService.SetAsync($"chat:{sessionId}:state", session, TimeSpan.FromMinutes(10), CancellationToken.None);
     }
 
-    /// <summary>
-    /// Construye el agente con las herramientas enlazadas al borrador de la sesión indicada.
-    /// El borrador solo se conoce al recibir el mensaje, por lo que el agente se arma por petición;
-    /// el historial de la conversación vive en la <see cref="AgentSession"/> cacheada, no en el agente.
-    /// </summary>
-    /// <param name="draft">Borrador de reserva de la sesión al que quedan enlazadas las herramientas.</param>
-    /// <returns>El agente listo para atender la conversación.</returns>
-    private AIAgent BuildAgent(BookingDraft draft)
+    private ChatClientAgent BuildAgent(Guid sessionId)
     {
         var cruiseTools = new CruiseTools(_cruiseRepository, _cabinRepository, _extraRepository);
-        var bookingTools = new BookingTools(_cruiseRepository, _cabinRepository, _extraRepository, _mediator, _jobService, _userInfo, draft);
+        var bookingTools = new BookingTools(_cruiseRepository, _cabinRepository, _extraRepository, _jobService, _cacheService, _userInfo, _mediator, sessionId);
 
         var chatOptions = new ChatOptions
         {
             Instructions = BuildSystemPrompt(),
             Tools = [
-                AIFunctionFactory.Create(cruiseTools.SearchCruises, new AIFunctionFactoryOptions { Name = "search_cruises" }),
-                AIFunctionFactory.Create(cruiseTools.GetCruiseDates, new AIFunctionFactoryOptions { Name = "get_cruise_dates" }),
-                AIFunctionFactory.Create(cruiseTools.GetAvailableCabins, new AIFunctionFactoryOptions { Name = "get_available_cabins" }),
-                AIFunctionFactory.Create(cruiseTools.GetExtras, new AIFunctionFactoryOptions { Name = "get_extras" }),
-                AIFunctionFactory.Create(bookingTools.StartBooking, new AIFunctionFactoryOptions { Name = "start_booking" }),
-                AIFunctionFactory.Create(bookingTools.AddCabin, new AIFunctionFactoryOptions { Name = "add_cabin" }),
-                AIFunctionFactory.Create(bookingTools.RemoveCabin, new AIFunctionFactoryOptions { Name = "remove_cabin" }),
-                AIFunctionFactory.Create(bookingTools.AddExtra, new AIFunctionFactoryOptions { Name = "add_extra" }),
-                AIFunctionFactory.Create(bookingTools.RemoveExtra, new AIFunctionFactoryOptions { Name = "remove_extra" }),
-                AIFunctionFactory.Create(bookingTools.GetBookingSummary, new AIFunctionFactoryOptions { Name = "get_booking_summary" }),
-                AIFunctionFactory.Create(bookingTools.RestartBooking, new AIFunctionFactoryOptions { Name = "restart_booking" }),
-                AIFunctionFactory.Create(bookingTools.ConfirmBooking, new AIFunctionFactoryOptions { Name = "confirm_booking" })
+                AIFunctionFactory.Create(cruiseTools.SearchCruises),
+                AIFunctionFactory.Create(cruiseTools.GetCruiseDates),
+                AIFunctionFactory.Create(cruiseTools.GetAvailableCabins),
+                AIFunctionFactory.Create(cruiseTools.GetExtras),
+                AIFunctionFactory.Create(bookingTools.StartBooking),
+                AIFunctionFactory.Create(bookingTools.AddCabin),
+                AIFunctionFactory.Create(bookingTools.RemoveCabin),
+                AIFunctionFactory.Create(bookingTools.AddExtra),
+                AIFunctionFactory.Create(bookingTools.RemoveExtra),
+                AIFunctionFactory.Create(bookingTools.GetBookingSummary),
+                AIFunctionFactory.Create(bookingTools.RestartBooking),
+                AIFunctionFactory.Create(bookingTools.ConfirmBooking)
                 ],
             RawRepresentationFactory = _ => new OllamaSharp.Models.Chat.ChatRequest { Think = false }
         };
@@ -116,33 +109,9 @@ public class OllamaChatManager: IChatManager
         return _chatClient.AsAIAgent(new ChatClientAgentOptions
         {
             Name = "Asistente de reservas de cruceros",
-            ChatOptions = chatOptions
+            ChatOptions = chatOptions,
+            ChatHistoryProvider = new DaprChatHistoryProvider(_cacheService, sessionId)
         });
-    }
-
-    /// <summary>
-    /// Recupera el borrador de reserva de la sesión, creándolo si aún no existe, y refresca su expiración.
-    /// Vive en <see cref="BookingDraftStore"/> para sobrevivir entre peticiones HTTP sucesivas.
-    /// </summary>
-    /// <param name="sessionId">Identificador único de la sesión de chat del usuario.</param>
-    /// <returns>El borrador de la sesión.</returns>
-    private BookingDraft GetOrCreateDraft(Guid sessionId)
-    {
-        var draft = _draftStore.Get(sessionId) ?? new BookingDraft();
-        _draftStore.Set(sessionId, draft);
-
-        return draft;
-    }
-
-    private async Task<AgentSession> GetOrCreateSession(AIAgent agent, Guid sessionId)
-    {
-        var session = await _cache.GetOrCreateAsync(sessionId, async (entry) =>
-        {
-            entry.SlidingExpiration = TimeSpan.FromMinutes(10);
-            return await agent.CreateSessionAsync();
-        });
-
-        return session!;
     }
 
     private string BuildSystemPrompt() => $"""
@@ -151,6 +120,7 @@ public class OllamaChatManager: IChatManager
         Siempre debes iniciar la conversacion saludando al usuario por su nombre.
 
         Flujo de reserva paso a paso:
+        0. Llama a la tool get_booking_summary para saber si hay una reserva en curso. Si el borrador esta vacio, empieza por el punto 1, en caso contrario, pregunta al usuario si quiere continuar con ella o empezar de nuevo. Si quiere empezar de nuevo, llama a restart_booking y empieza por el punto 1. Si quiere continuar, pregunta qué quiere cambiar (camarotes, extras, fechas...). Si quiere cambiar camarotes, ejecuta los pasos 4 y 7. Si quiere cambiar extras, ejecuta los pasos 5 y 7. Si quiere cambiar fechas llama a restart_booking y empieza de nuevo por el punto 1. Si no quiere cambiar nada, pasa al punto 9.
         1. Pregunta zona, duración, solo adultos...
         2. search_cruises para ver los cruceros disponibles.
         3. get_cruise_dates para las fechas de salida.
@@ -171,15 +141,12 @@ public class OllamaChatManager: IChatManager
         8. get_booking_summary para mostrar el resumen con el precio de cada elemento y el total.
             Informa al usuario que es posible que los precios hayan cambiado en el trascurso de la reserva. Los nuevos
             son finales y quedan bloqueados al mostrar el resumen.
-        9. Pide confirmación explícita al usuario sobre el resumen. Tras el resumen las cabinas quedan
-            bloqueadas y NO se pueden modificar: si el usuario quiere cambiar cabinas, explícale que hay
-            que empezar la reserva desde cero, pide confirmación explícita y solo entonces llama a
-            restart_booking (libera los bloqueos y descarta el borrador; después se empieza de nuevo
-            con start_booking).
+        9. Pide confirmación explícita al usuario sobre el resumen antes de proceder. 
         10. confirm_booking SOLO tras la confirmación explícita. No pidas datos de tarjeta para cobro. 
         11. Si confirm_booking devuelve ok, indica al usuario que deberia realizar el pago manual desde la seccion de "Mis reservas" en la web de Cruceros Marejada. Si devuelve error, discúlpate e indica el motivo.
 
         Nunca llames confirm_booking sin confirmación explícita.
+        Si el usuario pide cambiar el crucero  o las fechas de salida, reinicia la reserva con restart_booking y empieza de nuevo por el punto 1.
         Nunca pidas datos de los pasajeros (nombre, DNI, fecha de nacimiento...): todo eso se recoge después de la
         reserva en el check-in online. Sí debes preguntar cuántas personas viajan en cada camarote (occupants),
         pero SOLO el número, nunca sus datos personales.

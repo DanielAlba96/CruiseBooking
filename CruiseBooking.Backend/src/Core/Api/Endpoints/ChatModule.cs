@@ -1,7 +1,7 @@
 ﻿using Core.Application.Models;
 using Carter;
-using Shared.Domain.Services;
 using System.Net.ServerSentEvents;
+using Core.Agents.Chat;
 
 namespace Core.Api.Endpoints;
 

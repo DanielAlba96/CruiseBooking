@@ -52,8 +52,9 @@ Clean Architecture split into three bounded hosts (`Core`, `Cruises`, `Jobs`) ov
 | `src/Shared/Domain/` | Entities, enums, repository interfaces (`IBookingRepository`, `IUserRepository`, …), service interfaces (`IPaymentService`, `IEmailService`, `IJobService`, `IWorkflowService`, `IChatManager`), shared models, `ControlledException` base |
 | `src/Shared/Persistence/` | EF Core `CruisesDbContext`, entity `Configurators/`, repository implementations, migrations, `DbSeeder` |
 | `src/Core/Application/` | Use cases (request + response + handler), custom CQRS mediator (`Common/CQRS/`), application exceptions, DTOs/models |
-| `src/Core/Infraestructure/` | Dapr workflows/activities, `StripePaymentService`, `DaprJobService`, `DaprWorkflowService`, AI chat tooling, `Options/` |
+| `src/Core/Infraestructure/` | Dapr workflows/activities, `StripePaymentService`, `DaprJobService`, `DaprWorkflowService`, `Settings/` |
 | `src/Core/Api/` | Minimal API + Carter REST endpoints, Keycloak auth, OpenAPI/Scalar, `GlobalExceptionHandler`, Dapr components in `ResourcesLocal/` |
+| `src/Core/Agents/` | AI Agents with their tools and configurations |
 | `src/Cruises/Api/` | HotChocolate GraphQL host (read-only); depends only on `Shared.Persistence` |
 | `src/Jobs/Application/` | Jobs as use cases (`IJob` keyed implementations + `IJobResolver`), `InvoiceService` |
 | `src/Jobs/Infrastructure/` | `SmtpEmailService`, `Options/` |
@@ -75,7 +76,7 @@ Clean Architecture split into three bounded hosts (`Core`, `Cruises`, `Jobs`) ov
 - **GraphQL**: Read-only queries only — all mutations go through the Minimal API endpoints in `Core.Api`.
 - **EF context usage**: Repositories create contexts via `IDbContextFactory` (`using var context = ...`), not via a DI-injected context, to be safe under concurrent GraphQL resolvers. Repository methods returning `IQueryable` are for GraphQL only; add async materializing methods for handlers and tools.
 - **Resources**: User-facing messages come from `ErrorMessages.resx` in the project that throws (`Core.Application`, `Shared.Persistence`, `Jobs.Infrastructure`).
-- **Options**: Options pattern classes live in each project's `Options/` folder (`Core/Infraestructure/Options/`, `Jobs/Infrastructure/Options/`).
+- **Options**: Options pattern classes live in each project's `Settings/` folder.
 
 ## Configuration
 

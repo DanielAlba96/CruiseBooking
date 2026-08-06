@@ -1,9 +1,9 @@
-﻿namespace Core.Infrastructure.Options;
+﻿namespace Core.Infrastructure.Settings;
 
 /// <summary>
 /// Opciones de configuración para la integración con Stripe.
 /// </summary>
-public class StripeOptions
+public class StripeSettings
 {
     public const string SectionName = "Stripe";
 

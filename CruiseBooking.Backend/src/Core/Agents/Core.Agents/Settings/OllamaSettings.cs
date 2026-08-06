@@ -1,9 +1,9 @@
-﻿namespace Core.Infrastructure.Options;
+﻿namespace Core.Agents.Settings;
 
 /// <summary>
 /// Opciones de configuración para la integración con Ollama.
 /// </summary>
-public sealed class OllamaOptions
+public sealed class OllamaSettings
 {
     public const string SectionName = "Ollama";
 

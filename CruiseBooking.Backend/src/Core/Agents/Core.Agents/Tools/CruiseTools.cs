@@ -2,7 +2,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 
-namespace Core.Infrastructure.AI.Tools;
+namespace Core.Agents.Tools;
 
 /// <summary>
 /// Herramientas de solo lectura sobre el catálogo de cruceros expuestas al modelo de lenguaje.
@@ -15,6 +15,7 @@ internal sealed class CruiseTools(
     ICabinRepository cabinRepository,
     IExtraRepository extraRepository)
 {
+    [DisplayName("search_cruises")]
     [Description("Busca cruceros por zona, duración o tipo")]
     public async Task<string> SearchCruises(
     [Description("Zona geográfica")] string? zone,
@@ -26,6 +27,7 @@ internal sealed class CruiseTools(
         return JsonSerializer.Serialize(results);
     }
 
+    [DisplayName("get_cruise_dates")]
     [Description("Obtiene las fechas de salida de un crucero específico")]
     public async Task<string> GetCruiseDates(
         [Description("ID del crucero")] int cruiseId)
@@ -34,6 +36,8 @@ internal sealed class CruiseTools(
         return JsonSerializer.Serialize(result);
     }
 
+
+    [DisplayName("get_available_cabins")]
     [Description("Obtiene cabinas disponibles para una fecha de salida de crucero con precios y disponibilidad")]
     public async Task<string> GetAvailableCabins(
         [Description("ID de la fecha de salida del crucero")] int cruiseDateId)
@@ -42,6 +46,7 @@ internal sealed class CruiseTools(
         return JsonSerializer.Serialize(result);
     }
 
+    [DisplayName("get_extras")]
     [Description("Obtiene los extras disponibles para una fecha de salida de crucero con sus precios")]
     public async Task<string> GetExtras(
         [Description("ID de la fecha de salida del crucero")] int cruiseDateId)

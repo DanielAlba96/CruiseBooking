@@ -1,4 +1,4 @@
-﻿namespace Shared.Domain.Services;
+﻿namespace Core.Agents.Chat;
 
 /// <summary>
 /// Define el contrato para gestionar sesiones de chat con streaming de mensajes.

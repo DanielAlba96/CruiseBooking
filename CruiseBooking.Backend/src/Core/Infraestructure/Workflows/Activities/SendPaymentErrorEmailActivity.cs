@@ -1,12 +1,12 @@
 ﻿using Core.Application.Common.Exceptions;
 using Core.Application.Resources;
+using Core.Infrastructure.Settings;
 using Dapr.Workflow;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Shared.Domain.Models;
 using Shared.Domain.Repositories;
 using Shared.Domain.Services;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Core.Infrastructure.Options;
 
 namespace Core.Infrastructure.Workflows.Activities;
 
@@ -18,12 +18,12 @@ namespace Core.Infrastructure.Workflows.Activities;
 internal class SendPaymentErrorEmailActivity(
     IBookingRepository bookingRepository,
     IJobService jobService,
-    IOptions<CheckInOptions> checkInOptions,
+    IOptions<CheckInSettings> checkInOptions,
     ILogger<SendPaymentErrorEmailActivity> logger) : WorkflowActivity<int, bool>
 {
     readonly IBookingRepository _bookingRepository = bookingRepository;
     readonly IJobService _jobService = jobService;
-    readonly CheckInOptions _checkInOptions = checkInOptions.Value;
+    readonly CheckInSettings _checkInOptions = checkInOptions.Value;
     readonly ILogger<SendPaymentErrorEmailActivity> _logger = logger;
 
     /// <summary>Encola el correo de error de cobro de la reserva indicada.</summary>

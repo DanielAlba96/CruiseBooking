@@ -37,7 +37,7 @@ var daprConfigJobs = new DaprSidecarOptions
     ResourcesPaths = ["../../src/Jobs/Api/ResourcesLocal"]
 };
 
-var coreApi = builder.AddProject<Projects.Core_Api>("core-api")
+builder.AddProject<Projects.Core_Api>("core-api")
     .WaitFor(cruisesdb)
     .WaitFor(daprStateDb)
     .WaitFor(rabbit)
@@ -52,6 +52,7 @@ var coreApi = builder.AddProject<Projects.Core_Api>("core-api")
                     context.EnvironmentVariables["RABBITMQ_CONNECTION_STRING"] = rabbit.Resource.ConnectionStringExpression;
                     context.EnvironmentVariables["POSTGRES_CONNECTION_STRING"] = ReferenceExpression.Create(
                         $"host={postgres.Resource.PrimaryEndpoint.Property(EndpointProperty.Host)} port={postgres.Resource.PrimaryEndpoint.Property(EndpointProperty.Port)} user=postgres password={postgres.Resource.PasswordParameter} dbname=daprstate sslmode=disable");
+
                     return Task.CompletedTask;
                 }));
     });

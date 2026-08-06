@@ -3,8 +3,12 @@
     <Project Path="aspire/AppHost/AppHost.csproj" Id="bb36e491-1c43-422a-a83d-21c28dd3a507" />
     <Project Path="aspire/ServiceDefaults/ServiceDefaults.csproj" />
   </Folder>
+  <Folder Name="/Solution items/">
+    <File Path="CLAUDE.md" />
+  </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/core/">
+    <Project Path="src/Core/Agents/Core.Agents/Core.Agents.csproj" Id="e709d413-8a7c-4fb6-b6f1-0a5989a2b431" />
     <Project Path="src/Core/Api/Core.Api.csproj" />
     <Project Path="src/Core/Application/Core.Application.csproj" Id="787cb742-56a3-4865-8fb8-4f5912b08608" />
     <Project Path="src/Core/Infraestructure/Core.Infrastructure.csproj" Id="23d5c7c8-b9ea-412a-81b7-4985a2dcfc07" />
@@ -18,7 +22,7 @@
     <Project Path="src/Jobs/Infrastructure/Jobs.Infrastructure.csproj" Id="31c15994-d16d-4ebb-a5e2-a8aebe52f25d" />
   </Folder>
   <Folder Name="/src/shared/">
-    <Project Path="src/Shared/Persistence/Shared.Persistence.csproj" />
     <Project Path="src/Shared/Domain/Shared.Domain.csproj" Id="79a5b6f5-aa3e-4cd6-b7af-338a929f592b" />
+    <Project Path="src/Shared/Persistence/Shared.Persistence.csproj" />
   </Folder>
 </Solution>

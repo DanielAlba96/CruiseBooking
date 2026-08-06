@@ -1,4 +1,4 @@
-﻿namespace Core.Infrastructure.AI.Models;
+﻿namespace Core.Agents.Models;
 
 /// <summary>
 /// Borrador de reserva en construcción durante una conversación de chat.
