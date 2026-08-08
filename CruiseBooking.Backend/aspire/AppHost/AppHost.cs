@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Aspire.Hosting.Dapr;
+using Microsoft.Extensions.DependencyInjection;
 
 var builder = DistributedApplication.CreateBuilder(args);
 

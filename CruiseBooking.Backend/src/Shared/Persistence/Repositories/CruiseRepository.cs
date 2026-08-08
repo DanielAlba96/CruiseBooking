@@ -59,6 +59,8 @@ public class CruiseRepository(IDbContextFactory<CruisesDbContext> contextFactory
 
         return await context.CruiseDates
             .AsNoTracking()
+            .Include(x => x.Cruise)
+            .Include(x => x.Ship)
             .FirstOrDefaultAsync(cd => cd.Id == cruiseDateId);
     }
 

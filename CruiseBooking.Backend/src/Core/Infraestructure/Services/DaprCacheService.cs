@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using System.Text.Json;
 using Dapr.Client;
 using Shared.Domain.Services;
 
@@ -10,9 +11,16 @@ internal sealed class DaprCacheService(DaprClient daprClient) : ICacheService
 
     private readonly DaprClient _daprClient = daprClient;
 
-    public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
+    public async Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
-        return _daprClient.GetStateAsync<T?>(StoreName, key, cancellationToken: cancellationToken);
+        try
+        {
+            return await _daprClient.GetStateAsync<T?>(StoreName, key, cancellationToken: cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return default;
+        }
     }
 
     public Task SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken cancellationToken = default)

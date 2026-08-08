@@ -1,20 +1,22 @@
-﻿using Core.Application.Common.Exceptions;
+﻿using Core.Agents.Common.Middleware;
+using Core.Agents.Models;
+using Core.Agents.Tools;
+using Core.Application.Common.CQRS;
+using Core.Application.Common.Exceptions;
 using Core.Application.Models;
-using Shared.Domain.Repositories;
-using Shared.Domain.Services;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Shared.Domain.Repositories;
+using Shared.Domain.Services;
+using System.Globalization;
 using System.Runtime.CompilerServices;
-using Core.Application.Common.CQRS;
-using Core.Agents.Tools;
+using System.Text;
+using System.Text.Json;
 
 namespace Core.Agents.Chat;
 
-/// <summary>
-/// Gestor de chat para guiar la reserva de cruceros de forma conversacional.
-/// Mantiene sesiones en caché, construye herramientas de búsqueda y manejo de borradores,
-/// y orquesta la interacción con el modelo de lenguaje.
-/// </summary>
+/// <inheritdoc />
 public class ChatManager(
     IChatClient chatClient,
     ICruiseRepository cruiseRepository,
@@ -23,7 +25,9 @@ public class ChatManager(
     IJobService jobService,
     ICacheService cacheService,
     IMediator mediator,
-    UserInfo userInfo) : IChatManager
+    UserInfo userInfo,
+    ILoggerFactory loggerFactory,
+    FunctionLoggingMiddleware functionLoggingMiddleware) : IChatManager
 {
     private readonly IChatClient _chatClient = chatClient;
     private readonly ICruiseRepository _cruiseRepository = cruiseRepository;
@@ -33,26 +37,42 @@ public class ChatManager(
     private readonly ICacheService _cacheService = cacheService;
     private readonly IMediator _mediator = mediator;
     private readonly UserInfo _userInfo = userInfo;
+    private readonly ILoggerFactory _loggerFactory = loggerFactory;
 
-    /// <summary>
-    /// Inicia una conversación de chat, procesando un mensaje del usuario.
-    /// Retorna los tokens de salida del modelo filtrados, ocultando bloques de pensamiento.
-    /// </summary>
-    /// <param name="sessionId">Identificador único de la sesión de chat del usuario.</param>
-    /// <param name="message">Mensaje de entrada del usuario a procesar.</param>
-    /// <param name="ct">Token de cancelación para interrumpir la operación.</param>
-    /// <returns>Enumeración asincrónica de tokens de salida del modelo en formato string.</returns>
-    public async IAsyncEnumerable<string> StartChatStreamAsync(Guid sessionId, string message, [EnumeratorCancellation] CancellationToken ct = default)
+    /// <inheritdoc />
+    public IAsyncEnumerable<ChatStreamEvent> StartChatStreamAsync(Guid sessionId, string message, CancellationToken ct = default)
+        => StreamChatCoreAsync(sessionId, new ChatMessage(ChatRole.User, message), ct);
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<ChatStreamEvent> StartChatStreamWithApprovalAsync(
+        Guid sessionId,
+        string toolCallId,
+        bool approved,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var approvalRequest = await _cacheService.GetAsync<ToolApprovalRequestContent>($"chat:{sessionId}:approval:{toolCallId}", ct)
+            ?? throw new NotFoundException("Esta reserva ya no está disponible para su aprobación");
+
+        var message = new ChatMessage(ChatRole.User, [approvalRequest.CreateResponse(approved)]);
+        await foreach (var e in StreamChatCoreAsync(sessionId, message, ct))
+            yield return e;
+    }
+
+    private async IAsyncEnumerable<ChatStreamEvent> StreamChatCoreAsync(Guid sessionId, ChatMessage message, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var agent = BuildAgent(sessionId);
 
-        var session = await _cacheService.GetAsync<AgentSession>($"chat:{sessionId}:state", CancellationToken.None);
-        if (session is not null)
+        AgentSession session;
+        var cachedState = await _cacheService.GetAsync<JsonElement?>($"chat:{sessionId}:state", CancellationToken.None);
+
+        if (cachedState is { ValueKind: JsonValueKind.Object } serializedSession)
         {
+            session = await agent.DeserializeSessionAsync(serializedSession, null, CancellationToken.None);
+
             var sessionUser = session.StateBag.GetValue<string>("userId");
 
             if (sessionUser != _userInfo.Id.ToString())
-                throw new UnauthorizedException("La sesión de chat no pertenece al usuario actual.");
+                throw new UnauthorizedException("No tienes permisos para acceder a esta sesión");
         }
         else
         {
@@ -61,27 +81,35 @@ public class ChatManager(
             session.StateBag.SetValue("userId", _userInfo.Id.ToString());
         }
 
-        var inThinkBlock = false;
-
-        await foreach (var outputToken in agent.RunStreamingAsync(message, session, cancellationToken: ct).Where(t => !string.IsNullOrEmpty(t.Text)))
+        await foreach (var outputToken in agent.RunStreamingAsync(message, session, cancellationToken: ct))
         {
-            if (outputToken.Text.StartsWith("thought <channel|>", StringComparison.Ordinal))
-                continue;
+            foreach (var content in outputToken.Contents)
+            {
+                switch (content)
+                {
+                    case TextContent { Text.Length: > 0 } text:
+                        yield return new ChatStreamEventToken(text.Text);
+                        break;
 
-            if (outputToken.Text.Contains("<think>"))
-                inThinkBlock = true;
+                    case ToolApprovalRequestContent approval:
+                        var toolCallId = approval.ToolCall.CallId;
+                        await _cacheService.SetAsync($"chat:{sessionId}:approval:{toolCallId}", approval, TimeSpan.FromMinutes(10), CancellationToken.None);
+                        var summary = await BuildBookingSummary(sessionId,ct);
+                        yield return new ChatStreamEventApproval(toolCallId, summary);
+                        break;
 
-            if (!inThinkBlock)
-                yield return outputToken.Text;
-
-            if (inThinkBlock && outputToken.Text.Contains("</think>"))
-                inThinkBlock = false;
+                    case ErrorContent error:
+                        yield return new ChatStreamEventError(error.Message);
+                        break;
+                }
+            }
         }
 
-        await _cacheService.SetAsync($"chat:{sessionId}:state", session, TimeSpan.FromMinutes(10), CancellationToken.None);
+        var updatedState = await agent.SerializeSessionAsync(session, null, CancellationToken.None);
+        await _cacheService.SetAsync($"chat:{sessionId}:state", updatedState, TimeSpan.FromMinutes(10), CancellationToken.None);
     }
 
-    private ChatClientAgent BuildAgent(Guid sessionId)
+    private AIAgent BuildAgent(Guid sessionId)
     {
         var cruiseTools = new CruiseTools(_cruiseRepository, _cabinRepository, _extraRepository);
         var bookingTools = new BookingTools(_cruiseRepository, _cabinRepository, _extraRepository, _jobService, _cacheService, _userInfo, _mediator, sessionId);
@@ -94,16 +122,16 @@ public class ChatManager(
                 AIFunctionFactory.Create(cruiseTools.GetCruiseDates),
                 AIFunctionFactory.Create(cruiseTools.GetAvailableCabins),
                 AIFunctionFactory.Create(cruiseTools.GetExtras),
+                AIFunctionFactory.Create(bookingTools.GetBookingDraft),
                 AIFunctionFactory.Create(bookingTools.StartBooking),
                 AIFunctionFactory.Create(bookingTools.AddCabin),
                 AIFunctionFactory.Create(bookingTools.RemoveCabin),
                 AIFunctionFactory.Create(bookingTools.AddExtra),
                 AIFunctionFactory.Create(bookingTools.RemoveExtra),
-                AIFunctionFactory.Create(bookingTools.GetBookingSummary),
                 AIFunctionFactory.Create(bookingTools.RestartBooking),
-                AIFunctionFactory.Create(bookingTools.ConfirmBooking)
+                new ApprovalRequiredAIFunction(AIFunctionFactory.Create(bookingTools.ConfirmBooking))
                 ],
-            RawRepresentationFactory = _ => new OllamaSharp.Models.Chat.ChatRequest { Think = false }
+            RawRepresentationFactory = _ => new OllamaSharp.Models.Chat.ChatRequest { Think = true }
         };
 
         return _chatClient.AsAIAgent(new ChatClientAgentOptions
@@ -111,51 +139,106 @@ public class ChatManager(
             Name = "Asistente de reservas de cruceros",
             ChatOptions = chatOptions,
             ChatHistoryProvider = new DaprChatHistoryProvider(_cacheService, sessionId)
-        });
+        })
+        .AsBuilder()
+        .UseOpenTelemetry(sourceName: "CruiseAssistant", configure: c => c.EnableSensitiveData = true)
+        .Use(functionLoggingMiddleware.InvokeAsync)
+        .UseLogging(_loggerFactory)
+        .Build();
+    }
+
+    private async Task<string> BuildBookingSummary(Guid sessionId, CancellationToken ct)
+    {
+        var draft = await _cacheService.GetAsync<BookingDraft>($"chat:{sessionId}:draft", ct);
+
+        var availableExtras = await _extraRepository.GetExtrasAsync(draft!.CruiseDateId);
+        var extraPrices = availableExtras.ToDictionary(e => e.ExtraId, e => e.Price);
+
+        decimal total = 0.0m;
+
+        var culture = CultureInfo.GetCultureInfo("es-ES");
+        var sb = new StringBuilder();
+
+        sb.AppendLine("# Resumen de su reserva");
+        sb.AppendLine();
+
+        sb.AppendLine("## Camarotes");
+        sb.AppendLine();
+
+        if (draft.Cabins.Count > 0)
+        {
+            sb.AppendLine("| Camarote | Nº Pasajeros | Precio |");
+            sb.AppendLine("| --- | --- | --- |");
+
+            foreach (var cabin in draft.Cabins)
+            {
+                total += cabin.Price;
+                sb.AppendLine($"| {cabin.Name} | {cabin.Occupants} | {cabin.Price.ToString("C", culture)} |");
+            }
+        }
+        else
+        {
+            sb.AppendLine("_Sin camarotes seleccionados._");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("## Extras");
+        sb.AppendLine();
+
+        if (draft.Extras.Count > 0)
+        {
+            sb.AppendLine("| Extra | Precio |");
+            sb.AppendLine("| --- | --- |");
+
+            foreach (var extra in draft.Extras)
+            {
+                total += extraPrices[extra.ExtraId];
+                sb.AppendLine($"| {extra.Name} | {extraPrices[extra.ExtraId].ToString("C", culture)} |");
+            }
+        }
+        else
+        {
+            sb.AppendLine("_Sin extras seleccionados._");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine($"**Total: {total.ToString("C", culture)}**");
+
+        return sb.ToString();
     }
 
     private string BuildSystemPrompt() => $"""
-        Eres un asistente virtual de reservas de cruceros de la empresa Cruceros Marejada.
-        Atiendes a {_userInfo.Name} {_userInfo.Surname} ({_userInfo.Email}). Es el titular de la reserva.
-        Siempre debes iniciar la conversacion saludando al usuario por su nombre.
+        Eres el asistente virtual de reservas de la empresa Cruceros Marejada.
+        Atiendes a {_userInfo.Name} {_userInfo.Surname} ({_userInfo.Email}), titular de la reserva.
+        Inicia siempre la conversación saludando al usuario por su nombre.
 
-        Flujo de reserva paso a paso:
-        0. Llama a la tool get_booking_summary para saber si hay una reserva en curso. Si el borrador esta vacio, empieza por el punto 1, en caso contrario, pregunta al usuario si quiere continuar con ella o empezar de nuevo. Si quiere empezar de nuevo, llama a restart_booking y empieza por el punto 1. Si quiere continuar, pregunta qué quiere cambiar (camarotes, extras, fechas...). Si quiere cambiar camarotes, ejecuta los pasos 4 y 7. Si quiere cambiar extras, ejecuta los pasos 5 y 7. Si quiere cambiar fechas llama a restart_booking y empieza de nuevo por el punto 1. Si no quiere cambiar nada, pasa al punto 9.
-        1. Pregunta zona, duración, solo adultos...
-        2. search_cruises para ver los cruceros disponibles.
-        3. get_cruise_dates para las fechas de salida.
-        4. get_available_cabins para ver la disponibilidad de cabinas en una fecha de salida concreta.
-            Los precios de las cabinas son por camarote, independientes del número de pasajeros.
-        5. get_extras para los extras disponibles en esa fecha de salida y sus precios.
-        6. start_booking para iniciar la reserva con la fecha de salida elegida.
-        7. add_cabin(cabin_id, price, max_occupancy, occupants, quantity) para cada TIPO de cabina elegida; usa quantity
-           para indicar cuántas cabinas del mismo tipo añadir en una sola llamada (por defecto 1). ANTES de llamar,
-           pregunta al usuario cuántos pasajeros irán en cada camarote de ese tipo y pásalo en occupants (no puede
-           superar max_occupancy). Es solo el número de personas, NUNCA sus datos personales.
-           INTERPRETACIÓN DE CANTIDADES: si el usuario escribe un número junto al tipo de cabina
-           (ej. "2 ocean view", "3 interior"), ese número es SIEMPRE la cantidad (quantity), NUNCA
-           el ID ni el número de opción. El cabin_id proviene exclusivamente de get_available_cabins.
-           remove_cabin para eliminar; add_extra / remove_extra para los extras.
-           Al mostrar las opciones de cabinas disponibles al usuario, usa viñetas (•) en forma de lista vertical
-           en lugar de listas numeradas para no confundir el número de opción con la cantidad solicitada.
-        8. get_booking_summary para mostrar el resumen con el precio de cada elemento y el total.
-            Informa al usuario que es posible que los precios hayan cambiado en el trascurso de la reserva. Los nuevos
-            son finales y quedan bloqueados al mostrar el resumen.
-        9. Pide confirmación explícita al usuario sobre el resumen antes de proceder. 
-        10. confirm_booking SOLO tras la confirmación explícita. No pidas datos de tarjeta para cobro. 
-        11. Si confirm_booking devuelve ok, indica al usuario que deberia realizar el pago manual desde la seccion de "Mis reservas" en la web de Cruceros Marejada. Si devuelve error, discúlpate e indica el motivo.
+        Tu objetivo es ayudar al usuario a montar su reserva a su ritmo: puede explorar cruceros, fechas,
+        cabinas y extras en el orden que prefiera. Guíale con sugerencias, sin imponerle un proceso rígido.
+        Consulta el borrador al empezar la conversación: si dejó una reserva a medias, ofrécele continuarla
+        o empezar de nuevo.
 
-        Nunca llames confirm_booking sin confirmación explícita.
-        Si el usuario pide cambiar el crucero  o las fechas de salida, reinicia la reserva con restart_booking y empieza de nuevo por el punto 1.
-        Nunca pidas datos de los pasajeros (nombre, DNI, fecha de nacimiento...): todo eso se recoge después de la
-        reserva en el check-in online. Sí debes preguntar cuántas personas viajan en cada camarote (occupants),
-        pero SOLO el número, nunca sus datos personales.
-        Si el usuario quiere dar esos datos, explícale que los tendrá que dar en el check-in online tras la reserva.
-        Nunca muestres los IDs al usuario.
-        Todos los precios son en euros.
-        Cuando el usuario te pregunte por un crucero, normalmente te indicara la zona, no el nombre del crucero ni del barco.
-        Una cabina puede alojar hasta max_occupancy personas; tenlo en cuenta al recomendar cuántas cabinas necesita el grupo.
-        Nunca interpretes los numeros del usuario como ids, el usuario no los conoce.
-        Responde siempre en español de España (castellano). No inventes precios ni fechas — usa las herramientas.
+        Trato con el usuario:
+        - No conoce los IDs y nunca debes mostrárselos. Un número suyo junto a un tipo de cabina
+          ("2 ocean view", "3 interior") es la cantidad de camarotes que quiere, jamás un ID.
+        - Presenta las opciones de cabinas en lista vertical con viñetas (•), nunca numerada, para que
+          el número de opción no se confunda con la cantidad.
+        - Suele referirse a la zona del itinerario, no al nombre del crucero ni del barco.
+        - Nunca le pidas datos personales de los pasajeros (nombre, DNI, fecha de nacimiento...): se recogen
+          en el check-in online posterior. Si insiste en darlos, explícale que los dará entonces. Sí debes
+          preguntarle cuántas personas van en cada camarote.
+
+        Reserva:
+        - En cuanto el usuario elija una fecha de salida concreta, abre el borrador con start_booking antes
+          de añadirle nada. Sin ese paso previo, añadir cabinas o extras falla siempre.
+        - Si todos los camarotes son iguales y el usuario no tiene preferencia en la distribucion, asigna tu los pasajeros a los
+          camarotes como consideres.
+        - Recomiéndale cuántos camarotes necesita su grupo según el aforo máximo de cada tipo de cabina.
+        - Antes de cerrar la reserva, avísale de que verá un resumen para aprobarlo. No la des por hecha
+          hasta que se confirme correctamente.
+        - Una vez confirmada, indícale que el pago se hace manualmente desde la sección "Mis reservas" de
+          la web de Cruceros Marejada. Si falla, discúlpate e indícale el motivo.
+
+        Todos los precios son en euros. No inventes precios, fechas ni disponibilidad: sale todo de las
+        herramientas. Responde siempre en español de España (castellano).
         """;
 }

@@ -2,7 +2,10 @@
 using Core.Api.Common;
 using Core.Application;
 using Core.Infrastructure;
+using Core.Agents;
 using Scalar.AspNetCore;
+
+Console.OutputEncoding = System.Text.Encoding.UTF8;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,6 +19,8 @@ builder.Services.AddKeycloakAuthentication(
 builder.AddCoreInfrastructureServices();
 
 builder.Services.AddCoreApplicationServices();
+builder.AddCoreAgentServices();
+
 builder.Services.AddOpenApi(options =>
 {
     options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
@@ -38,9 +43,9 @@ builder.Services.AddProblemDetails(options =>
     };
 });
 
-builder.Logging.ClearProviders();
+builder.Services.AddOpenTelemetry().WithTracing(t => t.AddSource("CruiseAssistant"));
+
 builder.Logging.AddConsole();
-builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
 var app = builder.Build();
 

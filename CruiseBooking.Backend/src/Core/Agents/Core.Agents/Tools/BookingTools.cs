@@ -36,10 +36,28 @@ internal sealed class BookingTools(
 
     private readonly string _draftkey = $"chat:{sessionId}:draft";
 
+    [DisplayName("get_booking_draft")]
+    [Description("Devuelve el borrador de reserva en curso: crucero, barco, fecha de salida, cabinas añadidas con sus ocupantes y precios, y extras contratados. Si has_draft es false no hay ninguna reserva empezada. Llámala al inicio de la conversación para saber si el usuario dejó una reserva a medias, y siempre que necesites consultar el estado actual en lugar de fiarte de la conversación.")]
+    public async Task<string> GetBookingDraft()
+    {
+        var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
+        if (draft is null || draft.CruiseDateId == 0)
+        {
+            return JsonSerializer.Serialize(new { ok = true, has_draft = false });
+        }
+
+        return JsonSerializer.Serialize(new
+        {
+            ok = true,
+            has_draft = true,
+            draft
+        });
+    }
+
     [DisplayName("start_booking")]
-    [Description("Inicia un borrador de reserva para una fecha de salida de crucero. Reinicia cualquier borrador anterior.")]
+    [Description("Crea el borrador de reserva para una fecha de salida concreta. Es obligatoria antes de add_cabin y add_extra. Descarta sin aviso cualquier borrador anterior, así que si ya hay uno en curso confirma antes con el usuario. El borrador queda ligado a esta salida: para cambiar de crucero o de fecha hay que llamar a restart_booking y empezar de nuevo.")]
     public async Task<string> StartBooking(
-        [Description("ID de la fecha de salida del crucero")] int cruiseDateId)
+        [Description("ID de la fecha de salida del crucero obtenido de get_cruise_dates")] int cruiseDateId)
     {
         var cruiseDate = await _cruiseRepository.GetCruiseDateAsync(cruiseDateId);
         if (cruiseDate is null)
@@ -50,7 +68,10 @@ internal sealed class BookingTools(
         var draft = new BookingDraft
         {
             CruiseDateId = cruiseDate.Id,
-            ShipId = cruiseDate.ShipId
+            CruiseName = cruiseDate.Cruise!.Name,
+            ShipId = cruiseDate.Ship!.Id,
+            ShipName = cruiseDate.Ship!.Name,
+            DepartureDate = cruiseDate.StartDate
         };
 
         await _cacheService.SetAsync(_draftkey, draft, TimeSpan.FromMinutes(10));
@@ -59,16 +80,14 @@ internal sealed class BookingTools(
     }
 
     [DisplayName("add_cabin")]
-    [Description("Añade una o varias cabinas del mismo tipo al borrador de reserva. Requiere haber iniciado la reserva con start_booking.")]
+    [Description("Añade UN camarote al borrador y lo bloquea temporalmente. Requiere start_booking previo. Para reservar varios camarotes del mismo tipo, llama una vez por camarote, indicando en cada llamada los ocupantes de ese camarote concreto.")]
     public async Task<string> AddCabin(
-        [Description("ID de la cabina del barco")] int cabinId,
-        [Description("Precio de la cabina obtenido de get_available_cabins")] decimal price,
-        [Description("Aforo máximo de la cabina obtenido de get_available_cabins")] int maxOccupancy,
-        [Description("Número de pasajeros que ocuparán cada cabina de este tipo (no puede superar max_occupancy)")] int occupants,
-        [Description("Número de cabinas de este tipo a añadir (por defecto 1)")] int quantity)
+        [Description("ID de la cabina obtenido de get_available_cabins. Nunca un número dicho por el usuario: no conoce los IDs")] int cabinId,
+        [Description("Nombre de la cabina tal cual viene en cabinType de get_available_cabins")] string cabinName,
+        [Description("Precio de la cabina obtenido de get_available_cabins, sin recalcular ni prorratear por pasajero")] decimal price,
+        [Description("Número de pasajeros que ocuparán este camarote. No puede superar el maxOccupancy de su tipo. Pregúntaselo al usuario antes de llamar; es solo la cantidad de personas, nunca sus datos personales")] int occupants)
     {
         occupants = Math.Max(1, occupants);
-        quantity = Math.Max(1, quantity);
 
         var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
         if (draft is null)
@@ -80,9 +99,6 @@ internal sealed class BookingTools(
         {
             return JsonSerializer.Serialize(new { error = "Primero inicia la reserva con start_booking" });
         }
-
-        for (int i = 0; i < quantity; i++)
-        {
             try
             {
                 var lockedCabinId = await _cabinRepository.LockCabin(draft.CruiseDateId, _userInfo.Id, cabinId, price, occupants);
@@ -90,29 +106,26 @@ internal sealed class BookingTools(
             }
             catch (ControlledException ex)
             {
-                return JsonSerializer.Serialize(new { error = ex.Message, locked = draft.Cabins.Count(c => c.CabinId == cabinId) });
+                return JsonSerializer.Serialize(new { error = ex.Message, locked = draft.Cabins.Count(c => c.Id == cabinId) });
             }
 
             draft.Cabins.Add(new DraftCabin
             {
-                CabinId = cabinId,
+                Id = cabinId,
+                Name = cabinName,
                 Price = price,
-                MaxOccupancy = maxOccupancy,
                 Occupants = occupants
             });
-        }
 
         await _cacheService.SetAsync(_draftkey, draft, TimeSpan.FromMinutes(10));
 
-        var totalOfType = draft.Cabins.Count(c => c.CabinId == cabinId);
-
-        return JsonSerializer.Serialize(new { ok = true, cabin_id = cabinId, price, max_occupancy = maxOccupancy, quantity, total_of_type = totalOfType });
+        return JsonSerializer.Serialize(new { ok = true, cabinId, price, occupants });
     }
 
     [DisplayName("remove_cabin")]
-    [Description("Quita una cabina del borrador de reserva.")]
+    [Description("Quita del borrador UN camarote de este tipo y libera su bloqueo. Si hay varios del mismo tipo, elimina solo uno y devuelve en remaining cuántos quedan: repite la llamada para quitar más.")]
     public async Task<string> RemoveCabin(
-        [Description("ID de la cabina del barco")] int cabinId)
+        [Description("ID de la cabina obtenido de get_available_cabins o del borrador. Nunca un número dicho por el usuario")] int cabinId)
     {
         var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
         if (draft is null)
@@ -120,7 +133,7 @@ internal sealed class BookingTools(
             return JsonSerializer.Serialize(new { error = "La reserva ha expirado, vuelve a iniciarla con start_booking" });
         }
 
-        var matches = draft.Cabins.Where(c => c.CabinId == cabinId).ToList();
+        var matches = draft.Cabins.Where(c => c.Id == cabinId).ToList();
         if (matches.Count == 0)
         {
             return JsonSerializer.Serialize(new { error = "La cabina no está en la reserva" });
@@ -131,15 +144,15 @@ internal sealed class BookingTools(
 
         await _cacheService.SetAsync(_draftkey, draft, TimeSpan.FromMinutes(10));
 
-        var remaining = draft.Cabins.Count(c => c.CabinId == cabinId);
+        var remaining = draft.Cabins.Count(c => c.Id == cabinId);
 
         return JsonSerializer.Serialize(new { ok = true, cabin_id = cabinId, remaining });
     }
 
     [DisplayName("add_extra")]
-    [Description("Añade un extra al borrador de reserva. Requiere haber iniciado la reserva con start_booking.")]
+    [Description("Añade un extra al borrador. Requiere start_booking previo. Cada extra se contrata una sola vez para toda la reserva: no lo añadas por cabina ni por pasajero.")]
     public async Task<string> AddExtra(
-        [Description("ID del extra")] int extraId)
+        [Description("ID del extra obtenido de get_extras para esta misma fecha de salida")] int extraId)
     {
         var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
         if (draft is null)
@@ -166,19 +179,18 @@ internal sealed class BookingTools(
         draft.Extras.Add(new DraftExtra
         {
             ExtraId = extra.ExtraId,
-            Name = extra.Extra!.Name,
-            Price = extra.Price
+            Name = extra.Extra!.Name
         });
 
         await _cacheService.SetAsync(_draftkey, draft, TimeSpan.FromMinutes(10));
 
-        return JsonSerializer.Serialize(new { ok = true, extra_id = extra.ExtraId, name = extra.Extra!.Name, price = extra.Price });
+        return JsonSerializer.Serialize(new { ok = true, extra_id = extra.ExtraId, name = extra.Extra!.Name });
     }
 
     [DisplayName("remove_extra")]
     [Description("Quita un extra del borrador de reserva.")]
     public async Task<string> RemoveExtra(
-        [Description("ID del extra")] int extraId)
+        [Description("ID del extra tal como aparece en el borrador")] int extraId)
     {
         var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
         if (draft is null)
@@ -199,58 +211,8 @@ internal sealed class BookingTools(
         return JsonSerializer.Serialize(new { ok = true, extra_id = extraId });
     }
 
-    [DisplayName("get_booking_summary")]
-    [Description("Devuelve el resumen del borrador de reserva con cabinas, número de ocupantes, extras y el precio total, y bloquea las cabinas con los precios mostrados.")]
-    public async Task<string> GetBookingSummary()
-    {
-        var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
-        if (draft is null)
-        {
-            return JsonSerializer.Serialize(new { error = "La reserva ha expirado, vuelve a iniciarla con start_booking" });
-        }
-
-        if (draft.Cabins.Count == 0 && draft.Extras.Count == 0)
-        {
-            return JsonSerializer.Serialize(new { error = "El borrador de reserva está vacío" });
-        }
-
-        var availableCabins = await _cabinRepository.GetCabinsByCruiseDate(draft.CruiseDateId);
-        var cabinPrices = availableCabins.ToDictionary(c => c.Id, c => c.Price);
-        var availableExtras = await _extraRepository.GetExtrasAsync(draft.CruiseDateId);
-        var extraPrices = availableExtras.ToDictionary(e => e.ExtraId, e => e.Price);
-
-        if (draft.Cabins.Any(c => !cabinPrices.ContainsKey(c.CabinId)))
-        {
-            return JsonSerializer.Serialize(new { error = "Alguna de las cabinas del borrador ya no existe en esta fecha de salida. Pide al usuario que la elimine con remove_cabin o que reinicie la reserva con restart_booking." });
-        }
-
-        if (draft.Extras.Any(e => !extraPrices.ContainsKey(e.ExtraId)))
-        {
-            return JsonSerializer.Serialize(new { error = "Alguno de los extras del borrador ya no existe en esta fecha de salida. Pide al usuario que lo elimine con remove_extra o que reinicie la reserva con restart_booking." });
-        }
-
-        var cabins = draft.Cabins.GroupBy(c => c.CabinId).Select(g =>
-        {
-            var unitPrice = cabinPrices[g.Key];
-            return new
-            {
-                cabinId = g.Key,
-                quantity = g.Count(),
-                unitPrice,
-                lineTotal = unitPrice * g.Count(),
-                maxOccupancy = g.First().MaxOccupancy
-            };
-        }).ToList();
-
-        var extras = draft.Extras.Select(e => new { extraId = e.ExtraId, e.Name, price = extraPrices[e.ExtraId] }).ToList();
-
-        var total = cabins.Sum(c => c.lineTotal) + extras.Sum(e => e.price);
-
-        return JsonSerializer.Serialize(new { cabins, extras, total });
-    }
-
     [DisplayName("restart_booking")]
-    [Description("Reinicia la reserva desde cero: libera las cabinas bloqueadas y descarta el borrador completo. Llamar SOLO tras la confirmación explícita del usuario.")]
+    [Description("Descarta el borrador entero y libera las cabinas bloqueadas. Es el único modo de cambiar de crucero o de fecha de salida, porque el borrador está ligado a una salida concreta. Destructiva e irreversible: llámala SOLO tras la confirmación explícita del usuario, nunca para modificar cabinas o extras (usa remove_cabin y remove_extra).")]
     public async Task<string> RestartBooking()
     {
         var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
@@ -272,7 +234,7 @@ internal sealed class BookingTools(
     }
 
     [DisplayName("confirm_booking")]
-    [Description("Confirma la reserva: cobra con el método de pago del usuario y la guarda. Llamar solo tras la confirmación explícita del usuario sobre el resumen.")]
+    [Description("Cierra la reserva definitivamente y la guarda. Requiere al menos una cabina en el borrador. Al invocarla se muestra al usuario un resumen que debe aprobar, así que avísale antes de llamarla. Es el único modo de convertir el borrador en una reserva real: no des la reserva por hecha hasta que devuelva ok.")]
     public async Task<string> ConfirmBooking()
     {
         var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
@@ -289,7 +251,7 @@ internal sealed class BookingTools(
         var bookingDto = new CreateBookingRequest
         {
             CruiseDateId = draft.CruiseDateId,
-            SelectedCabins = [.. draft.Cabins.Select(c => new BookingCabinSelection(c.CabinId, c.Occupants, c.Price))],
+            SelectedCabins = [.. draft.Cabins.Select(c => new BookingCabinSelection(c.Id, c.Occupants, c.Price))],
             SelectedExtras = [.. draft.Extras.Select(e => e.ExtraId)]
         };
 

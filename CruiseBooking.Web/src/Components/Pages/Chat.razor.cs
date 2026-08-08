@@ -1,29 +1,38 @@
-﻿using CruiseBooking.Integrations;
+﻿using CruiseBooking.Components.Shared;
+using CruiseBooking.Integrations;
 using CruiseBooking.Integrations.Models;
 using CruiseBooking.Vms;
-using Markdig;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using MudBlazor;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace CruiseBooking.Components.Pages;
 
 /// <summary>
 /// Proporciona una interfaz de chat en tiempo real con un asistente de IA para asistencia en reservas de cruceros.
 /// </summary>
-public partial class Chat(IChatApi chatApi, ISnackbar snackbar, ILogger<Chat> logger) : IAsyncDisposable
+public partial class Chat(IChatApi chatApi, IDialogService dialogService, ISnackbar snackbar, ILogger<Chat> logger) : IAsyncDisposable
 {
-    static readonly MarkdownPipeline _mdPipeline = new MarkdownPipelineBuilder()
-        .UseAdvancedExtensions()
-        .Build();
+    const string TokenEvent = "token";
+    const string ApprovalRequiredEvent = "approval_required";
+    const string FailedEvent = "failed";
 
     static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    static readonly DialogOptions ApprovalDialogOptions = new()
+    {
+        BackdropClick = false,
+        CloseOnEscapeKey = false,
+        CloseButton = false,
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true
+    };
+
     readonly IChatApi _chatApi = chatApi;
+    readonly IDialogService _dialogService = dialogService;
     readonly ISnackbar _snackbar = snackbar;
     readonly ILogger<Chat> _logger = logger;
 
@@ -32,8 +41,6 @@ public partial class Chat(IChatApi chatApi, ISnackbar snackbar, ILogger<Chat> lo
     string _input = string.Empty;
     bool _isStreaming;
     CancellationTokenSource? _cts;
-
-    sealed record ChatStreamEvent([property: JsonPropertyName("data")] string? Data,  [property: JsonPropertyName("eventType")] string? EventType);
 
     protected override async Task OnInitializedAsync()
     {
@@ -67,16 +74,57 @@ public partial class Chat(IChatApi chatApi, ISnackbar snackbar, ILogger<Chat> lo
         _cts = new CancellationTokenSource();
 
         var received = 0;
+        var failed = false;
         try
         {
-            await foreach (var delta in GetChatStreamAsync(_sessionId, triggerMessage, _cts.Token))
+            var stream = ReadEventsAsync(
+                _chatApi.StreamChat(_sessionId, new ChatMessageRequest(triggerMessage), _cts.Token), _cts.Token);
+
+            while (stream is not null)
             {
-                received++;
-                assistant.Content += delta;
-                await InvokeAsync(StateHasChanged);
+                ChatStreamEventApproval? pendingApproval = null;
+
+                await foreach (var chatEvent in stream)
+                {
+                    switch (chatEvent)
+                    {
+                        case ChatStreamEventToken token:
+                            received++;
+                            assistant.Content += token.Text;
+                            await InvokeAsync(StateHasChanged);
+                            break;
+
+                        case ChatStreamEventApproval approval:
+                            pendingApproval = approval;
+                            break;
+
+                        case ChatStreamEventError error:
+                            failed = true;
+                            _logger.LogError("El asistente devolvió un error (sesión {SessionId}): {Reason}", _sessionId, error.Reason);
+                            _snackbar.Add(error.Reason, Severity.Error);
+
+                            if (string.IsNullOrEmpty(assistant.Content))
+                            {
+                                assistant.Content = error.Reason;
+                                await InvokeAsync(StateHasChanged);
+                            }
+                            break;
+                    }
+                }
+
+                stream = null;
+
+                if (pendingApproval is not null)
+                {
+                    var approved = await ConfirmApprovalAsync(pendingApproval.Summary);
+
+                    stream = ReadEventsAsync(
+                        _chatApi.SubmitApproval(_sessionId, pendingApproval.CallId, new ApprovalDecisionRequest(approved), _cts.Token),
+                        _cts.Token);
+                }
             }
 
-            if (received == 0)
+            if (received == 0 && !failed)
             {
                 _logger.LogWarning("El stream de chat se cerró sin tokens (sesión {SessionId})", _sessionId);
                 assistant.Content = "(sin respuesta)";
@@ -102,27 +150,43 @@ public partial class Chat(IChatApi chatApi, ISnackbar snackbar, ILogger<Chat> lo
         }
     }
 
-    async IAsyncEnumerable<string> GetChatStreamAsync(
-        Guid sessionId,
-        string message,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    async Task<bool> ConfirmApprovalAsync(string summary)
     {
-        await using var stream = await _chatApi.StreamChat(
-            sessionId, new ChatMessageRequest(message), cancellationToken);
-
-        await foreach (SseItem<string> item in SseParser.Create(stream).EnumerateAsync(cancellationToken))
+        var parameters = new DialogParameters<ApprovalDialog>
         {
-            if (string.IsNullOrWhiteSpace(item.Data))
-                continue;
+            { x => x.Summary, summary }
+        };
 
-            var chunk = JsonSerializer.Deserialize<ChatStreamEvent>(item.Data, JsonOptions);
-            if (!string.IsNullOrEmpty(chunk?.Data))
-                yield return chunk.Data;
+        var dialog = await _dialogService.ShowAsync<ApprovalDialog>(
+            title: "Confirmar reserva",
+            parameters: parameters,
+            options: ApprovalDialogOptions);
+
+        var result = await dialog.Result;
+
+        return result is { Canceled: false, Data: bool approved } && approved;
+    }
+
+    static async IAsyncEnumerable<ChatStreamEvent> ReadEventsAsync(
+        Task<Stream> streamRequest,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await using var stream = await streamRequest;
+
+        await foreach (SseItem<ChatStreamEvent?> item in SseParser.Create<ChatStreamEvent?>(stream, ParseEvent).EnumerateAsync(cancellationToken))
+        {
+            if (item.Data is not null)
+                yield return item.Data;
         }
     }
 
-    static MarkupString RenderMarkdown(string? content) =>
-        new(Markdown.ToHtml(content ?? string.Empty, _mdPipeline));
+    static ChatStreamEvent? ParseEvent(string eventType, ReadOnlySpan<byte> data) => eventType switch
+    {
+        TokenEvent => JsonSerializer.Deserialize<ChatStreamEventToken>(data, JsonOptions),
+        ApprovalRequiredEvent => JsonSerializer.Deserialize<ChatStreamEventApproval>(data, JsonOptions),
+        FailedEvent => JsonSerializer.Deserialize<ChatStreamEventError>(data, JsonOptions),
+        _ => null
+    };
 
     static string BubbleStyle(ChatMessageVm msg) => msg.IsUser
         ? "max-width: 75%; background: var(--mud-palette-primary); color: var(--mud-palette-primary-text);"

@@ -33,7 +33,7 @@
                                 }
                                 else
                                 {
-                                    <div class="chat-markdown">@RenderMarkdown(msg.Content)</div>
+                                    <div class="chat-markdown">@MarkdownRenderer.ToMarkupString(msg.Content)</div>
                                 }
                             </MudPaper>
                         </div>

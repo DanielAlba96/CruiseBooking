@@ -9,22 +9,24 @@ internal sealed class BookingDraft
     /// <summary>Identificador de la fecha de crucero.</summary>
     public int CruiseDateId { get; set; }
 
+    /// <summary>Nombre del crucero.</summary>
+
+    public string CruiseName { get; set; } = string.Empty;
+
     /// <summary>Identificador del barco.</summary>
     public int ShipId { get; set; }
 
+    /// <summary>Nombre del barco.</summary>
+    public string ShipName { get; set; } = string.Empty;
+
+    /// <summary>Fecha de salida.</summary>
+    public DateTime DepartureDate { get; set; } = DateTime.MinValue;
+
     /// <summary>Lista de cabinas seleccionadas en el borrador.</summary>
-    public List<DraftCabin> Cabins { get; } = [];
+    public List<DraftCabin> Cabins { get; set; } = [];
 
     /// <summary>Lista de extras seleccionados en el borrador.</summary>
-    public List<DraftExtra> Extras { get; } = [];
-
-    internal void Clear()
-    {
-        CruiseDateId = 0;
-        ShipId = 0;
-        Cabins.Clear();
-        Extras.Clear();
-    }
+    public List<DraftExtra> Extras { get; set; } = [];
 }
 
 /// <summary>
@@ -34,13 +36,13 @@ internal sealed class BookingDraft
 internal sealed class DraftCabin
 {
     /// <summary>Identificador único de la cabina.</summary>
-    public int CabinId { get; set; }
+    public int Id { get; set; }
+
+    /// <summary>Nombra de la cabina.</summary>
+    public string Name { get; set; } = string.Empty;
 
     /// <summary>Precio de la cabina en el momento de añadirse al borrador.</summary>
     public decimal Price { get; set; }
-
-    /// <summary>Aforo máximo de pasajeros en la cabina.</summary>
-    public int MaxOccupancy { get; set; }
 
     /// <summary>Cantidad de pasajeros que ocuparán la cabina.</summary>
     public int Occupants { get; set; }
