@@ -7,6 +7,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OllamaSharp;
+using OpenAI;
+using System.ClientModel;
 
 namespace Core.Agents;
 
@@ -22,15 +24,32 @@ public static class DependencyInjection
     /// <returns>El mismo builder, para poder encadenar llamadas.</returns>
     public static IHostApplicationBuilder AddCoreAgentServices(this IHostApplicationBuilder builder)
     {
-        builder.Services.AddScoped<IChatManager, ChatManager>();
+        var openAIOptions = builder.Configuration.GetSection(OpenAISettings.SectionName).Get<OpenAISettings>()
+            ?? new OpenAISettings();
 
-        var ollamaOptions = builder.Configuration.GetSection(OllamaSettings.SectionName).Get<OllamaSettings>()
-            ?? new OllamaSettings();
+        if (openAIOptions.Enabled)
+        {
+            builder.Services.AddSingleton<IChatClient>(_ =>
+            {
+                var client = new OpenAIClient(
+                    new ApiKeyCredential(openAIOptions.ApiKey),
+                    new OpenAIClientOptions { Endpoint = new Uri(openAIOptions.BaseUrl) });
 
-        builder.Services.AddSingleton<IChatClient>(_ => new OllamaApiClient(new Uri(ollamaOptions.BaseUrl), ollamaOptions.Model));
+                return client.GetChatClient(openAIOptions.Model).AsIChatClient();
+            });
+        }
+        else
+        {
+            var ollamaOptions = builder.Configuration.GetSection(OllamaSettings.SectionName).Get<OllamaSettings>()
+                ?? new OllamaSettings();
+
+            builder.Services.AddSingleton<IChatClient>(_ => new OllamaApiClient(new Uri(ollamaOptions.BaseUrl), ollamaOptions.Model));
+        }
+
         builder.Services.AddSingleton<FunctionLoggingMiddleware>();
         builder.Services.AddScoped<IAgentFactory, AgentFactory>();
         builder.Services.AddScoped<IWorkflowFactory, WorkflowFactory>();
+        builder.Services.AddScoped<IChatManager, WorkflowChatManager>();
 
         return builder;
     }

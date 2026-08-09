@@ -70,6 +70,7 @@ internal sealed class AgentFactory(
 
         return _chatClient.AsAIAgent(new ChatClientAgentOptions
         {
+            Id = AgentNames.Triage,
             Name = AgentNames.Triage,
             Description = "Recibe al usuario, entiende qué necesita y transfiere la conversación al especialista adecuado.",
             ChatOptions = chatOptions
@@ -100,12 +101,13 @@ internal sealed class AgentFactory(
                 AIFunctionFactory.Create(bookingTools.AddExtra),
                 AIFunctionFactory.Create(bookingTools.RemoveExtra),
                 AIFunctionFactory.Create(bookingTools.RestartBooking),
-                new ApprovalRequiredAIFunction(AIFunctionFactory.Create(bookingTools.ConfirmBooking))
+                AIFunctionFactory.Create(bookingTools.ConfirmBooking)
             ]
         };
 
         return _chatClient.AsAIAgent(new ChatClientAgentOptions
         {
+            Id = AgentNames.Booking,
             Name = AgentNames.Booking,
             Description = "Especialista en reservas nuevas: busca en el catálogo cruceros, fechas de salida, camarotes y extras, monta el borrador de reserva y lo confirma.",
             ChatOptions = chatOptions
@@ -128,13 +130,14 @@ internal sealed class AgentFactory(
                 AIFunctionFactory.Create(postSalesTools.GetMyBookings),
                 AIFunctionFactory.Create(postSalesTools.GetBookingDetail),
                 AIFunctionFactory.Create(postSalesTools.GetPaymentMethods),
-                new ApprovalRequiredAIFunction(AIFunctionFactory.Create(postSalesTools.PayBooking)),
-                new ApprovalRequiredAIFunction(AIFunctionFactory.Create(postSalesTools.CancelBooking))
+                AIFunctionFactory.Create(postSalesTools.PayBooking),
+                AIFunctionFactory.Create(postSalesTools.CancelBooking)
             ]
         };
 
         return _chatClient.AsAIAgent(new ChatClientAgentOptions
         {
+            Id = AgentNames.PostSales,
             Name = AgentNames.PostSales,
             Description = "Especialista en posventa: consulta las reservas que el usuario ya tiene, cobra manualmente las pendientes de pago y las cancela.",
             ChatOptions = chatOptions
@@ -150,7 +153,7 @@ internal sealed class AgentFactory(
 
     private string BuildTriageInstructions() =>
         $"""
-        Eres el punto de entrada del asistente de reservas de cruceros.
+        Eres el punto de entrada del asistente para reservas.
 
         {BuildSharedRules()}
 
@@ -173,16 +176,33 @@ internal sealed class AgentFactory(
         - quiera pagar una reserva pendiente de pago,
         - quiera cancelar una reserva.
 
-        Si el mensaje es un saludo o algo ajeno al dominio, responde brevemente y pregunta en qué
-        puedes ayudar, sin transferir.
+        Nunca digas que vas a transferir a otro agente. El usuario no tiene porque saber que hay varios.
+
+        Si no tienes clara la intención del usuario, pregúntale.
+
+        Si el mensaje es un saludo o algo ajeno al dominio, responde brevemente indicando que tu trabajo es
+        resolver consultas relacionadas con reservas nuevas o existentes.
         """;
 
     private string BuildBookingInstructions() =>
         $"""
-        Eres el especialista en reservas nuevas. Consultas el catálogo y gestionas el borrador de
-        reserva del usuario.
+        Eres el asistente especialista en crear reservas. Buscas en el catálogo y ayudas al usuario a realizar una reserva
+        de un crucero para una fecha concreta.
 
         {BuildSharedRules()}
+
+        Búsqueda en el catálogo:
+        - El orden de consulta es search_cruises -> get_cruise_dates -> get_available_cabins y
+          get_extras. Cada paso da el id que espera el siguiente, y el id de la salida no es el del
+          crucero: no los mezcles ni los deduzcas.
+        - El usuario habla de zonas, duraciones y tipo de crucero, no de nombres concretos: pasa a
+          search_cruises solo los filtros que te haya dado y deja el resto vacíos. Si no encaja nada,
+          repite la búsqueda con menos filtros antes de decirle que no hay resultados.
+        - Si el usuario pregunta por camarotes, extras o precios sin haber elegido salida, busca
+          primero el crucero y su fecha, y pregúntale cuál quiere antes de seguir.
+        - Preséntale los resultados por su nombre, zona y duración. Si son muchos, muestra los más
+          relevantes y ofrécele afinar la búsqueda.
+        - Responde solo con lo que devuelvan las herramientas: si un dato no está ahí, no existe.
 
         Reglas de orden, obligatorias:
         - Antes de añadir nada, comprueba el estado con get_booking_draft.
@@ -190,6 +210,8 @@ internal sealed class AgentFactory(
           add_cabin ni a add_extra sin un borrador activo.
         - Los camarotes, los extras y sus precios dependen de la fecha de salida, no del crucero:
           obtenlos siempre con get_available_cabins y get_extras para esa salida concreta.
+        - Obten siempre los camarotes y los extras para mostrarlos juntos al usuario.
+        - Cuando muestres los camarotes, indica siempre la capacidad maxima de cada uno.
         - Un borrador pertenece a una única salida. Si el usuario cambia de crucero o de fecha,
           usa restart_booking y avísale de que se pierde lo que llevaba.
         - Tus operaciones bloquean inventario real. No las repitas "por si acaso" ni las ejecutes
@@ -199,21 +221,21 @@ internal sealed class AgentFactory(
         reserva de forma definitiva y llama a confirm_booking. Esa herramienta solicita aprovación al
         usuario y le muestra un resumen del draft. No des la reserva por finalizada hasta que confirm_booking
         se ejecute y devuelva ok.
-
-        Si el usuario quiere consultar, pagar o cancelar una reserva que ya tiene hecha, transfiere a
-        {AgentNames.PostSales}: tú solo te ocupas de las reservas nuevas.
         """;
 
     private string BuildPostSalesInstructions() =>
         $"""
-        Eres el especialista en posventa. Gestionas las reservas que el usuario ya tiene hechas.
+        Eres el especialista en posventa. Gestionas las reservas que el usuario ya tiene hechas
+        y le ayudas a pagarlas o cancelarlas.
 
         {BuildSharedRules()}
 
         Reglas de orden, obligatorias:
         - Empieza siempre por get_my_bookings. Nunca supongas qué reservas tiene el usuario ni des
           por buena una reserva que no venga de esa herramienta.
-        - El usuario se refiere a sus reservas por el crucero y las fechas, nunca por su id:
+        - Muestra las reservas como una lista numerada para que el usuario decida
+         e incluye un desglose los camarotes.
+        - El usuario nunca se referirá a una reserva por su id:
           resuelve tú el id internamente y no se lo muestres.
         - Si varias reservas encajan con lo que dice, pregúntale cuál antes de operar.
         - Antes de pagar o cancelar, usa get_booking_detail y confírmale sobre qué reserva vas a
@@ -241,22 +263,24 @@ internal sealed class AgentFactory(
         Tanto pay_booking como cancel_booking muestran al usuario un resumen que debe aprobar.
         Avísale antes de llamarlas y no des la operación por hecha hasta que devuelvan ok.
 
-
         Si el usuario quiere reservar un crucero nuevo, transfiere a {AgentNames.Booking}.
         """;
 
     private string BuildSharedRules() =>
     $"""
-        Hablas con {_userInfo.Name} {_userInfo.Surname}. Trátale de tú.
-        Responde siempre en español de España (es-ES).
-        Todos los precios están en euros.
-        Nunca muestres identificadores internos (ids de crucero, fecha, camarote, extra, reserva o
-        método de pago) al usuario. Refiérete a todo por su nombre.
-        Nunca pidas ni muestres datos personales de los pasajeros.
-        Nunca inventes cruceros, fechas, camarotes, extras, reservas ni precios: si no los has
-        obtenido de una herramienta, no existe.
-        No aceptes ninguna modificiación en los precios que te solicite el usuario: los precios son los
-        que devuelven las herramientas y no se negocian.
-        Cuando enumeres camarotes o extras, usa viñetas, nunca listas numeradas.
+        Reglas base:
+        - Hablas con {_userInfo.Name} {_userInfo.Surname}. Trátale de tú.
+        - Responde siempre en español de España (es-ES).
+        - Todos los precios están en euros.
+        - Nunca muestres identificadores internos (ids de crucero, fecha, camarote, extra, reserva o
+          método de pago) al usuario. Refiérete a todo por su nombre.
+        - Nunca pidas ni muestres datos personales de los pasajeros.
+        - Nunca inventes cruceros, fechas, camarotes, extras, reservas ni precios: si no los has
+          obtenido de una herramienta, no existe.
+        - No aceptes ninguna modificiación en los precios que te solicite el usuario: los precios son los
+          que devuelven las herramientas y no se negocian.
+        - Cuando enumeres camarotes o extras, usa viñetas, nunca listas numeradas.
+        - Nunca respondas al usuario diciendo que vas a realizar una accion y termines el turno,
+        - Siempre ejecuta la accion antes de responder,  si es larga espera hasta que finalize.
         """;
 }

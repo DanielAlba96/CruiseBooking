@@ -13,6 +13,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Agents.AI" Version="1.17.0" />
     <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.17.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.3" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
     <PackageReference Include="OllamaSharp" Version="5.4.30" />

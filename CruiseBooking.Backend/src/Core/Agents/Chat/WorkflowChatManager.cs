@@ -2,25 +2,26 @@
 using Core.Agents.Orchestration;
 using Core.Application.Common.Exceptions;
 using Core.Application.Models;
-using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
-using Shared.Domain.Repositories;
 using Shared.Domain.Services;
-using System.Globalization;
 using System.Runtime.CompilerServices;
-using System.Text;
 
 namespace Core.Agents.Chat;
 
-/// <inheritdoc />
-internal class ChatManager(
+/// <summary>
+/// Gestor de chat en forma de workflow con handoff.
+/// Un agente de triage delega en 2 especialistas segun la petición del usuario
+/// En el momento del desarrollo existe un bug en MAF que impide solicitar
+/// aprobacion para ejecutar herramientas cuando se usan workflows con handoff,
+/// asi que hay que hacer un workaround manual.
+/// <see href="https://github.com/microsoft/agent-framework/issues/5621">Ver issue en GitHub</see>.
+/// </summary>
+internal class WorkflowChatManager(
     IWorkflowFactory workflowFactory,
-    IExtraRepository extraRepository,
     ICacheService cacheService,
     UserInfo userInfo) : IChatManager
 {
-    private readonly IExtraRepository _extraRepository = extraRepository;
     private readonly ICacheService _cacheService = cacheService;
     private readonly UserInfo _userInfo = userInfo;
     private readonly IWorkflowFactory _workflowFactory = workflowFactory;
@@ -75,27 +76,8 @@ internal class ChatManager(
             switch(evt)
             {
                 case AgentResponseUpdateEvent agentResponse:
-                    foreach (var content in agentResponse.Update.Contents)
-                    {
-                        switch (content)
-                        {
-                            case TextContent { Text.Length: > 0 } text:
-                                yield return new ChatStreamEventToken(text.Text);
-                                break;
-
-                            case ToolApprovalRequestContent approval:
-                                var toolCallId = approval.ToolCall.CallId;
-                                await _cacheService.SetAsync($"chat:{sessionId}:approval:{toolCallId}", approval, TimeSpan.FromMinutes(10), CancellationToken.None);
-                                var summary = await BuildBookingSummary(sessionId, ct);
-                                yield return new ChatStreamEventApproval(toolCallId, summary);
-                                break;
-
-                            case ErrorContent error:
-                                yield return new ChatStreamEventError(error.Message);
-                                break;
-                        }
-                    }
-
+                    if (!string.IsNullOrEmpty(agentResponse.Update.Text))
+                        yield return new ChatStreamEventToken(agentResponse.Update.Text);
                     break;
 
                 case WorkflowOutputEvent output when output.Is<List<ChatMessage>>():
@@ -114,71 +96,12 @@ internal class ChatManager(
             }
         }
 
-        sessionMessages.AddRange(newMessages.Skip(sessionMessages.Count));
+        if (newMessages is not null)
+            sessionMessages.AddRange(newMessages.Skip(sessionMessages.Count));
 
         workflowSession = new WorkflowSession(sessionId, _userInfo.Id, sessionMessages);
         await _cacheService.SetAsync($"chat:{sessionId}:state", workflowSession,
             TimeSpan.FromMinutes(10),
             CancellationToken.None);
-    }
-
-    private async Task<string> BuildBookingSummary(Guid sessionId, CancellationToken ct)
-    {
-        var draft = await _cacheService.GetAsync<BookingDraft>($"chat:{sessionId}:draft", ct);
-
-        var availableExtras = await _extraRepository.GetExtrasAsync(draft!.CruiseDateId);
-        var extraPrices = availableExtras.ToDictionary(e => e.ExtraId, e => e.Price);
-
-        decimal total = 0.0m;
-
-        var culture = CultureInfo.GetCultureInfo("es-ES");
-        var sb = new StringBuilder();
-
-        sb.AppendLine("# Resumen de su reserva");
-        sb.AppendLine();
-
-        sb.AppendLine("## Camarotes");
-        sb.AppendLine();
-
-        if (draft.Cabins.Count > 0)
-        {
-            sb.AppendLine("| Camarote | Nº Pasajeros | Precio |");
-            sb.AppendLine("| --- | --- | --- |");
-
-            foreach (var cabin in draft.Cabins)
-            {
-                total += cabin.Price;
-                sb.AppendLine($"| {cabin.Name} | {cabin.Occupants} | {cabin.Price.ToString("C", culture)} |");
-            }
-        }
-        else
-        {
-            sb.AppendLine("_Sin camarotes seleccionados._");
-        }
-
-        sb.AppendLine();
-        sb.AppendLine("## Extras");
-        sb.AppendLine();
-
-        if (draft.Extras.Count > 0)
-        {
-            sb.AppendLine("| Extra | Precio |");
-            sb.AppendLine("| --- | --- |");
-
-            foreach (var extra in draft.Extras)
-            {
-                total += extraPrices[extra.ExtraId];
-                sb.AppendLine($"| {extra.Name} | {extraPrices[extra.ExtraId].ToString("C", culture)} |");
-            }
-        }
-        else
-        {
-            sb.AppendLine("_Sin extras seleccionados._");
-        }
-
-        sb.AppendLine();
-        sb.AppendLine($"**Total: {total.ToString("C", culture)}**");
-
-        return sb.ToString();
     }
 }
