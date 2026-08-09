@@ -8,7 +8,7 @@
   </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/core/">
-    <Project Path="src/Core/Agents/Core.Agents/Core.Agents.csproj" Id="e709d413-8a7c-4fb6-b6f1-0a5989a2b431" />
+    <Project Path="src/Core/Agents/Core.Agents.csproj" Id="e709d413-8a7c-4fb6-b6f1-0a5989a2b431" />
     <Project Path="src/Core/Api/Core.Api.csproj" />
     <Project Path="src/Core/Application/Core.Application.csproj" Id="787cb742-56a3-4865-8fb8-4f5912b08608" />
     <Project Path="src/Core/Infraestructure/Core.Infrastructure.csproj" Id="23d5c7c8-b9ea-412a-81b7-4985a2dcfc07" />

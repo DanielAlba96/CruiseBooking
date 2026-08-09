@@ -1,5 +1,6 @@
 ﻿using Core.Agents.Chat;
 using Core.Agents.Common.Middleware;
+using Core.Agents.Orchestration;
 using Core.Agents.Settings;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -28,6 +29,8 @@ public static class DependencyInjection
 
         builder.Services.AddSingleton<IChatClient>(_ => new OllamaApiClient(new Uri(ollamaOptions.BaseUrl), ollamaOptions.Model));
         builder.Services.AddSingleton<FunctionLoggingMiddleware>();
+        builder.Services.AddScoped<IAgentFactory, AgentFactory>();
+        builder.Services.AddScoped<IWorkflowFactory, WorkflowFactory>();
 
         return builder;
     }

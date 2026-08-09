@@ -32,7 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\aspire\ServiceDefaults\ServiceDefaults.csproj" />
-    <ProjectReference Include="..\Agents\Core.Agents\Core.Agents.csproj" />
+    <ProjectReference Include="..\Agents\Core.Agents.csproj" />
     <ProjectReference Include="..\Application\Core.Application.csproj" />
     <ProjectReference Include="..\Infraestructure\Core.Infrastructure.csproj" />
   </ItemGroup>
