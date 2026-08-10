@@ -48,10 +48,9 @@ internal sealed class AgentFactory(
             _jobService,
             _cacheService,
             _userInfo,
-            _mediator,
             sessionId);
 
-        var postSalesTools = new PostSalesTools(_mediator);
+        var postSalesTools = new PostSalesTools(_mediator, _cacheService, sessionId);
 
         var triage = CreateTriageAgent();
         var booking = CreateBookingAgent(bookingTools);
@@ -176,9 +175,9 @@ internal sealed class AgentFactory(
         - quiera pagar una reserva pendiente de pago,
         - quiera cancelar una reserva.
 
-        Nunca digas que vas a transferir a otro agente. El usuario no tiene porque saber que hay varios.
-
         Si no tienes clara la intención del usuario, pregúntale.
+
+        Si el usuario te indica el resultado de la aprobacion de una herramiento, preguntale que quiere hacer a continuación.
 
         Si el mensaje es un saludo o algo ajeno al dominio, responde brevemente indicando que tu trabajo es
         resolver consultas relacionadas con reservas nuevas o existentes.
@@ -195,6 +194,7 @@ internal sealed class AgentFactory(
         - El orden de consulta es search_cruises -> get_cruise_dates -> get_available_cabins y
           get_extras. Cada paso da el id que espera el siguiente, y el id de la salida no es el del
           crucero: no los mezcles ni los deduzcas.
+        - Siempre devuelve los cruceros con sus fechas de salida en un mismo turno.
         - El usuario habla de zonas, duraciones y tipo de crucero, no de nombres concretos: pasa a
           search_cruises solo los filtros que te haya dado y deja el resto vacíos. Si no encaja nada,
           repite la búsqueda con menos filtros antes de decirle que no hay resultados.
@@ -216,11 +216,7 @@ internal sealed class AgentFactory(
           usa restart_booking y avísale de que se pierde lo que llevaba.
         - Tus operaciones bloquean inventario real. No las repitas "por si acaso" ni las ejecutes
           de forma especulativa: confirma con el usuario antes de cada cambio.
-
-        Cuando el usuario dé por cerrada su selección, avísale de que el siguiente paso confirma la
-        reserva de forma definitiva y llama a confirm_booking. Esa herramienta solicita aprovación al
-        usuario y le muestra un resumen del draft. No des la reserva por finalizada hasta que confirm_booking
-        se ejecute y devuelva ok.
+        - No des por terminada una reserva hasta que el usuario apruebe la operación.
         """;
 
     private string BuildPostSalesInstructions() =>
@@ -235,7 +231,7 @@ internal sealed class AgentFactory(
           por buena una reserva que no venga de esa herramienta.
         - Muestra las reservas como una lista numerada para que el usuario decida
          e incluye un desglose los camarotes.
-        - El usuario nunca se referirá a una reserva por su id:
+        - El usuario se referirá a una reserva por el numero del listado que le has mostrado, no por su id:
           resuelve tú el id internamente y no se lo muestres.
         - Si varias reservas encajan con lo que dice, pregúntale cuál antes de operar.
         - Antes de pagar o cancelar, usa get_booking_detail y confírmale sobre qué reserva vas a
@@ -260,10 +256,7 @@ internal sealed class AgentFactory(
         - Si la reserva estaba cobrada y el periodo de check-in ya ha empezado, la cancelación se
           rechazará: explícaselo con el mensaje de error y no lo reintentes.
 
-        Tanto pay_booking como cancel_booking muestran al usuario un resumen que debe aprobar.
-        Avísale antes de llamarlas y no des la operación por hecha hasta que devuelvan ok.
-
-        Si el usuario quiere reservar un crucero nuevo, transfiere a {AgentNames.Booking}.
+        No des por terminado un pago o una cancelación hasta que el usuario apruebe la operación.
         """;
 
     private string BuildSharedRules() =>
@@ -271,6 +264,7 @@ internal sealed class AgentFactory(
         Reglas base:
         - Hablas con {_userInfo.Name} {_userInfo.Surname}. Trátale de tú.
         - Responde siempre en español de España (es-ES).
+        - Nunca digas que vas a transferir a otro agente. El usuario no puede saber que hay varios.
         - Todos los precios están en euros.
         - Nunca muestres identificadores internos (ids de crucero, fecha, camarote, extra, reserva o
           método de pago) al usuario. Refiérete a todo por su nombre.

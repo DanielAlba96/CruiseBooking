@@ -26,7 +26,8 @@ var daprConfigCore = new DaprSidecarOptions
     DaprGrpcPort = 50001,
     DaprHttpPort = 3500,
     MetricsPort = 9090,
-    ResourcesPaths = ["../../src/Core/Api/ResourcesLocal"]
+    ResourcesPaths = ["../../src/Core/Api/ResourcesLocal"],
+    DaprMaxBodySize = "16MB"
 };
 
 var daprConfigJobs = new DaprSidecarOptions

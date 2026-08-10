@@ -1,4 +1,6 @@
 ﻿using Core.Agents.Chat;
+using Core.Agents.Chat.Approvals;
+using Core.Agents.Common;
 using Core.Agents.Common.Middleware;
 using Core.Agents.Orchestration;
 using Core.Agents.Settings;
@@ -50,6 +52,10 @@ public static class DependencyInjection
         builder.Services.AddScoped<IAgentFactory, AgentFactory>();
         builder.Services.AddScoped<IWorkflowFactory, WorkflowFactory>();
         builder.Services.AddScoped<IChatManager, WorkflowChatManager>();
+
+        builder.Services.AddKeyedScoped<IToolApprovalHandler, ConfirmBookingApprovalHandler>(ApprovalToolNames.ConfirmBooking);
+        builder.Services.AddKeyedScoped<IToolApprovalHandler, PayBookingApprovalHandler>(ApprovalToolNames.PayBooking);
+        builder.Services.AddKeyedScoped<IToolApprovalHandler, CancelBookingApprovalHandler>(ApprovalToolNames.CancelBooking);
 
         return builder;
     }

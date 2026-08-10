@@ -1,20 +1,18 @@
-﻿using Core.Agents.Models;
-using Core.Application.Common.CQRS;
+﻿using Core.Agents.Common;
+using Core.Agents.Models;
 using Core.Application.Models;
-using Core.Application.UseCases.Bookings;
 using Shared.Domain.Exceptions;
 using Shared.Domain.Repositories;
 using Shared.Domain.Services;
 using System.ComponentModel;
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 
 namespace Core.Agents.Tools;
 
 /// <summary>
-/// Herramientas de manejo del borrador de reserva expuestas al modelo de lenguaje.
-/// Las dependencias y el borrador se reciben por constructor para que cada método declare únicamente
-/// los parámetros que rellena el modelo; así <c>AIFunctionFactory</c> conserva el nombre del método y los
-/// <see cref="DescriptionAttribute"/> de la función y de cada parámetro en el esquema JSON.
+/// Herramientas para la creación de reservas expuestas al modelo de lenguaje.
 /// </summary>
 internal sealed class BookingTools(
     ICruiseRepository cruiseRepository,
@@ -23,7 +21,6 @@ internal sealed class BookingTools(
     IJobService jobService,
     ICacheService cacheService,
     UserInfo userInfo,
-    IMediator mediator,
     Guid sessionId)
 {
     private readonly ICruiseRepository _cruiseRepository = cruiseRepository;
@@ -32,9 +29,6 @@ internal sealed class BookingTools(
     private readonly IJobService _jobService = jobService;
     private readonly ICacheService _cacheService = cacheService;
     private readonly UserInfo _userInfo = userInfo;
-    private readonly IMediator _mediator = mediator;
-
-    private readonly string _draftkey = $"chat:{sessionId}:draft";
 
     [DisplayName("search_cruises")]
     [Description("Busca cruceros del catálogo filtrando por zona, duración y tipo. Devuelve para cada crucero su id, nombre, zona y duración. El id resultante es el que espera get_cruise_dates. Todos los filtros son opcionales: omítelos para ver el catálogo completo.")]
@@ -44,7 +38,7 @@ internal sealed class BookingTools(
    [Description("Duración máxima del crucero en días")] int? maxDays,
    [Description("true para devolver únicamente cruceros solo para adultos")] bool adultsOnly)
     {
-        var results = await cruiseRepository.SearchCruisesAsync(zone, minDays, maxDays, adultsOnly);
+        var results = await _cruiseRepository.SearchCruisesAsync(zone, minDays, maxDays, adultsOnly);
         return JsonSerializer.Serialize(results);
     }
 
@@ -53,7 +47,7 @@ internal sealed class BookingTools(
     public async Task<string> GetCruiseDates(
         [Description("ID del crucero obtenido de search_cruises")] int cruiseId)
     {
-        var result = await cruiseRepository.GetCruiseDatesAsync(cruiseId);
+        var result = await _cruiseRepository.GetCruiseDatesAsync(cruiseId);
         return JsonSerializer.Serialize(result);
     }
 
@@ -62,7 +56,7 @@ internal sealed class BookingTools(
     public async Task<string> GetAvailableCabins(
         [Description("ID de la fecha de salida del crucero obtenido de get_cruise_dates")] int cruiseDateId)
     {
-        var result = await cabinRepository.GetCabinsByCruiseDate(cruiseDateId);
+        var result = await _cabinRepository.GetCabinsByCruiseDate(cruiseDateId);
         return JsonSerializer.Serialize(result);
     }
 
@@ -71,7 +65,7 @@ internal sealed class BookingTools(
     public async Task<string> GetExtras(
         [Description("ID de la fecha de salida del crucero obtenido de get_cruise_dates")] int cruiseDateId)
     {
-        var extras = await extraRepository.GetExtrasAsync(cruiseDateId);
+        var extras = await _extraRepository.GetExtrasAsync(cruiseDateId);
         var result = extras.Select(e => new { extra_id = e.ExtraId, name = e.Extra!.Name, description = e.Extra!.Description, price = e.Price });
 
         return JsonSerializer.Serialize(result);
@@ -81,7 +75,7 @@ internal sealed class BookingTools(
     [Description("Devuelve el borrador de reserva en curso: crucero, barco, fecha de salida, cabinas añadidas con sus ocupantes y precios, y extras contratados. Si has_draft es false no hay ninguna reserva empezada. Llámala al inicio de la conversación para saber si el usuario dejó una reserva a medias, y siempre que necesites consultar el estado actual en lugar de fiarte de la conversación.")]
     public async Task<string> GetBookingDraft()
     {
-        var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
+        var draft = await _cacheService.GetAsync<BookingDraft>(ChatCacheKeyReference.Draft(sessionId));
         if (draft is null || draft.CruiseDateId == 0)
         {
             return JsonSerializer.Serialize(new { ok = true, has_draft = false });
@@ -115,7 +109,7 @@ internal sealed class BookingTools(
             DepartureDate = cruiseDate.StartDate
         };
 
-        await _cacheService.SetAsync(_draftkey, draft, TimeSpan.FromMinutes(10));
+        await _cacheService.SetAsync(ChatCacheKeyReference.Draft(sessionId), draft, TimeSpan.FromMinutes(10));
 
         return JsonSerializer.Serialize(new { ok = true, cruise_date_id = cruiseDate.Id });
     }
@@ -130,7 +124,7 @@ internal sealed class BookingTools(
     {
         occupants = Math.Max(1, occupants);
 
-        var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
+        var draft = await _cacheService.GetAsync<BookingDraft>(ChatCacheKeyReference.Draft(sessionId));
         if (draft is null)
         {
             return JsonSerializer.Serialize(new { error = "La reserva ha expirado, vuelve a iniciarla con start_booking" });
@@ -158,7 +152,7 @@ internal sealed class BookingTools(
                 Occupants = occupants
             });
 
-        await _cacheService.SetAsync(_draftkey, draft, TimeSpan.FromMinutes(10));
+        await _cacheService.SetAsync(ChatCacheKeyReference.Draft(sessionId), draft, TimeSpan.FromMinutes(10));
 
         return JsonSerializer.Serialize(new { ok = true, cabinId, price, occupants });
     }
@@ -168,7 +162,7 @@ internal sealed class BookingTools(
     public async Task<string> RemoveCabin(
         [Description("ID de la cabina obtenido de get_available_cabins o del borrador. Nunca un número dicho por el usuario")] int cabinId)
     {
-        var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
+        var draft = await _cacheService.GetAsync<BookingDraft>(ChatCacheKeyReference.Draft(sessionId));
         if (draft is null)
         {
             return JsonSerializer.Serialize(new { error = "La reserva ha expirado, vuelve a iniciarla con start_booking" });
@@ -183,7 +177,7 @@ internal sealed class BookingTools(
         await _cabinRepository.UnlockCabin(draft.CruiseDateId, cabinId, _userInfo.Id);
         draft.Cabins.Remove(matches[^1]);
 
-        await _cacheService.SetAsync(_draftkey, draft, TimeSpan.FromMinutes(10));
+        await _cacheService.SetAsync(ChatCacheKeyReference.Draft(sessionId), draft, TimeSpan.FromMinutes(10));
 
         var remaining = draft.Cabins.Count(c => c.Id == cabinId);
 
@@ -195,7 +189,7 @@ internal sealed class BookingTools(
     public async Task<string> AddExtra(
         [Description("ID del extra obtenido de get_extras para esta misma fecha de salida")] int extraId)
     {
-        var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
+        var draft = await _cacheService.GetAsync<BookingDraft>(ChatCacheKeyReference.Draft(sessionId));
         if (draft is null)
         {
             return JsonSerializer.Serialize(new { error = "La reserva ha expirado, vuelve a iniciarla con start_booking" });
@@ -223,7 +217,7 @@ internal sealed class BookingTools(
             Name = extra.Extra!.Name
         });
 
-        await _cacheService.SetAsync(_draftkey, draft, TimeSpan.FromMinutes(10));
+        await _cacheService.SetAsync(ChatCacheKeyReference.Draft(sessionId), draft, TimeSpan.FromMinutes(10));
 
         return JsonSerializer.Serialize(new { ok = true, extra_id = extra.ExtraId, name = extra.Extra!.Name });
     }
@@ -233,7 +227,7 @@ internal sealed class BookingTools(
     public async Task<string> RemoveExtra(
         [Description("ID del extra tal como aparece en el borrador")] int extraId)
     {
-        var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
+        var draft = await _cacheService.GetAsync<BookingDraft>(ChatCacheKeyReference.Draft(sessionId));
         if (draft is null)
         {
             return JsonSerializer.Serialize(new { error = "La reserva ha expirado, vuelve a iniciarla con start_booking" });
@@ -247,7 +241,7 @@ internal sealed class BookingTools(
 
         draft.Extras.Remove(extra);
 
-        await _cacheService.SetAsync(_draftkey, draft, TimeSpan.FromMinutes(10));
+        await _cacheService.SetAsync(ChatCacheKeyReference.Draft(sessionId), draft, TimeSpan.FromMinutes(10));
 
         return JsonSerializer.Serialize(new { ok = true, extra_id = extraId });
     }
@@ -256,7 +250,7 @@ internal sealed class BookingTools(
     [Description("Descarta el borrador entero y libera las cabinas bloqueadas. Es el único modo de cambiar de crucero o de fecha de salida, porque el borrador está ligado a una salida concreta. Destructiva e irreversible: llámala SOLO tras la confirmación explícita del usuario, nunca para modificar cabinas o extras (usa remove_cabin y remove_extra).")]
     public async Task<string> RestartBooking()
     {
-        var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
+        var draft = await _cacheService.GetAsync<BookingDraft>(ChatCacheKeyReference.Draft(sessionId));
         if (draft is null)
         {
             return JsonSerializer.Serialize(new { error = "La reserva ha expirado, vuelve a iniciarla con start_booking" });
@@ -269,16 +263,16 @@ internal sealed class BookingTools(
 
         await _cabinRepository.ClearLockedCabins(draft.CruiseDateId, _userInfo.Id);
 
-        await _cacheService.RemoveAsync(_draftkey);
+        await _cacheService.RemoveAsync(ChatCacheKeyReference.Draft(sessionId));
 
         return JsonSerializer.Serialize(new { ok = true, message = "Reserva reiniciada. Empieza de nuevo con start_booking." });
     }
 
     [DisplayName("confirm_booking")]
-    [Description("Cierra la reserva definitivamente y la guarda. Requiere al menos una cabina en el borrador. Al invocarla se muestra al usuario un resumen que debe aprobar, así que avísale antes de llamarla. Es el único modo de convertir el borrador en una reserva real: no des la reserva por hecha hasta que devuelva ok.")]
+    [Description("Finaliza la reserva generando un borrador final de la misma y lo deja pendiente de aprobación por parte del usuario")]
     public async Task<string> ConfirmBooking()
     {
-        var draft = await _cacheService.GetAsync<BookingDraft>(_draftkey);
+        var draft = await _cacheService.GetAsync<BookingDraft>(ChatCacheKeyReference.Draft(sessionId));
         if (draft is null)
         {
             return JsonSerializer.Serialize(new { error = "La reserva ha expirado, vuelve a iniciarla con start_booking" });
@@ -286,31 +280,81 @@ internal sealed class BookingTools(
 
         if (draft.Cabins.Count == 0)
         {
-            return JsonSerializer.Serialize(new { error = "No hay cabinas en la reserva" });
+            return JsonSerializer.Serialize(new { error = "No hay camarotes en la reserva" });
         }
 
-        var bookingDto = new CreateBookingRequest
-        {
-            CruiseDateId = draft.CruiseDateId,
-            SelectedCabins = [.. draft.Cabins.Select(c => new BookingCabinSelection(c.Id, c.Occupants, c.Price))],
-            SelectedExtras = [.. draft.Extras.Select(e => e.ExtraId)]
-        };
+        var summary = await BuildBookingSummary(draft);
 
-        try
-        {
-            await _mediator.Send(new CompleteBooking(bookingDto));
-        }
-        catch (ControlledException ex)
-        {
-            return JsonSerializer.Serialize(new { error = ex.Message });
-        }
+        // El tipo declarado debe ser la base para que la serialización escriba el discriminador.
+        ToolApprovalRequest approvalRequest = new ConfirmBookingApprovalRequest(
+            $"{ApprovalToolNames.ConfirmBooking}_{Guid.NewGuid()}",
+            ApprovalToolNames.ConfirmBooking,
+            summary);
 
-        await _cacheService.RemoveAsync(_draftkey);
+        await _cacheService.SetAsync(ChatCacheKeyReference.ManualApproval(sessionId), approvalRequest, TimeSpan.FromMinutes(10));
 
         return JsonSerializer.Serialize(new
         {
             ok = true,
-            check_in = "El usuario recibirá un email con la factura y un enlace para completar el check-in online con los datos de los pasajeros antes de la salida."
+            message = "Se ha generado el borrador final de la reserva. Responde brevemente pidiendo al usuario que lo revise y confirme, sin incluir un resumen de la reserva. Aun no se ha generado la reserva en el sistema. El usuario te avisará cuando la reserva sea aprobada o rechazada."
         });
+    }
+
+    private async Task<string> BuildBookingSummary(BookingDraft draft)
+    {
+        var availableExtras = await _extraRepository.GetExtrasAsync(draft.CruiseDateId);
+        var extraPrices = availableExtras.ToDictionary(e => e.ExtraId, e => e.Price);
+
+        decimal total = 0.0m;
+
+        var culture = CultureInfo.GetCultureInfo("es-ES");
+        var sb = new StringBuilder();
+
+        sb.AppendLine("# Resumen de su reserva");
+        sb.AppendLine();
+
+        sb.AppendLine("## Camarotes");
+        sb.AppendLine();
+
+        if (draft.Cabins.Count > 0)
+        {
+            sb.AppendLine("| Camarote | Nº Pasajeros | Precio |");
+            sb.AppendLine("| --- | --- | --- |");
+
+            foreach (var cabin in draft.Cabins)
+            {
+                total += cabin.Price;
+                sb.AppendLine($"| {cabin.Name} | {cabin.Occupants} | {cabin.Price.ToString("C", culture)} |");
+            }
+        }
+        else
+        {
+            sb.AppendLine("_Sin camarotes seleccionados._");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("## Extras");
+        sb.AppendLine();
+
+        if (draft.Extras.Count > 0)
+        {
+            sb.AppendLine("| Extra | Precio |");
+            sb.AppendLine("| --- | --- |");
+
+            foreach (var extra in draft.Extras)
+            {
+                total += extraPrices[extra.ExtraId];
+                sb.AppendLine($"| {extra.Name} | {extraPrices[extra.ExtraId].ToString("C", culture)} |");
+            }
+        }
+        else
+        {
+            sb.AppendLine("_Sin extras seleccionados._");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine($"**Total: {total.ToString("C", culture)}**");
+
+        return sb.ToString();
     }
 }

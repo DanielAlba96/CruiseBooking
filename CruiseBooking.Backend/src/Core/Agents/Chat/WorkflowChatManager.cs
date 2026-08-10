@@ -1,9 +1,12 @@
-﻿using Core.Agents.Models;
+﻿using Core.Agents.Chat.Approvals;
+using Core.Agents.Common;
+using Core.Agents.Models;
 using Core.Agents.Orchestration;
 using Core.Application.Common.Exceptions;
 using Core.Application.Models;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Shared.Domain.Services;
 using System.Runtime.CompilerServices;
 
@@ -14,66 +17,72 @@ namespace Core.Agents.Chat;
 /// Un agente de triage delega en 2 especialistas segun la petición del usuario
 /// En el momento del desarrollo existe un bug en MAF que impide solicitar
 /// aprobacion para ejecutar herramientas cuando se usan workflows con handoff,
-/// asi que hay que hacer un workaround manual.
+/// asi que hay que hacerlo manualmente fuera de MAF.
 /// <see href="https://github.com/microsoft/agent-framework/issues/5621">Ver issue en GitHub</see>.
 /// </summary>
 internal class WorkflowChatManager(
     IWorkflowFactory workflowFactory,
     ICacheService cacheService,
-    UserInfo userInfo) : IChatManager
+    UserInfo userInfo,
+    IServiceProvider serviceProvider) : IChatManager
 {
     private readonly ICacheService _cacheService = cacheService;
     private readonly UserInfo _userInfo = userInfo;
     private readonly IWorkflowFactory _workflowFactory = workflowFactory;
+    private readonly IServiceProvider _serviceProvider = serviceProvider;
 
     /// <inheritdoc />
-    public IAsyncEnumerable<ChatStreamEvent> StartChatStreamAsync(Guid sessionId, string message, CancellationToken ct = default)
-        => StreamChatCoreAsync(sessionId, new ChatMessage(ChatRole.User, message), ct);
+    public async IAsyncEnumerable<ChatStreamEvent> StartChatStreamAsync(
+        Guid sessionId,
+        string message,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var workflowSession = await LoadSessionAsync(sessionId);
+
+        await foreach (var e in StreamChatCoreAsync(workflowSession, new ChatMessage(ChatRole.User, message), ct))
+            yield return e;
+    }
 
     /// <inheritdoc />
     public async IAsyncEnumerable<ChatStreamEvent> StartChatStreamWithApprovalAsync(
         Guid sessionId,
         string toolCallId,
-        bool approved,
+        bool approved, 
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var approvalRequest = await _cacheService.GetAsync<ToolApprovalRequestContent>($"chat:{sessionId}:approval:{toolCallId}", ct)
-            ?? throw new NotFoundException("Esta reserva ya no está disponible para su aprobación");
+        var workflowSession = await LoadSessionAsync(sessionId);
 
-        var message = new ChatMessage(ChatRole.User, [approvalRequest.CreateResponse(approved)]);
-        await foreach (var e in StreamChatCoreAsync(sessionId, message, ct))
+        var approvalKey = ChatCacheKeyReference.ManualApproval(sessionId);
+
+        var approvalRequest = await _cacheService.GetAsync<ToolApprovalRequest>(approvalKey, ct);
+        if (approvalRequest is null || !approvalRequest.CallId.Equals(toolCallId))
+            throw new NotFoundException("No se encuentra la aprobación");
+
+        var handler = _serviceProvider.GetKeyedService<IToolApprovalHandler>(approvalRequest.ToolName);
+
+        string message = handler is null
+            ? IToolApprovalHandler.ApprovalFailedMessage
+            : await handler.HandleAsync(sessionId, approvalRequest, approved, ct);
+
+        await _cacheService.RemoveAsync(approvalKey, ct);
+
+        await foreach (var e in StreamChatCoreAsync(workflowSession, new ChatMessage(ChatRole.User, message), ct))
             yield return e;
     }
 
-    private async IAsyncEnumerable<ChatStreamEvent> StreamChatCoreAsync(Guid sessionId, ChatMessage message, [EnumeratorCancellation] CancellationToken ct = default)
+    private async IAsyncEnumerable<ChatStreamEvent> StreamChatCoreAsync(WorkflowSession workflowSession, ChatMessage message, [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var workflowSession = await _cacheService.GetAsync<WorkflowSession>($"chat:{sessionId}:state", CancellationToken.None);
-
-        List<ChatMessage> sessionMessages = [];
-        if (workflowSession is not null)
-        {
-            if (workflowSession.UserId != _userInfo.Id)
-                throw new UnauthorizedAccessException("No tiene permiso para acceder a esta conversación.");
-
-            if (workflowSession.SessionId != sessionId)
-                throw new InvalidOperationException("El Id de sesión no coincide con la sesión almacenada.");
-
-            if (workflowSession.Messages is null)
-                throw new InvalidOperationException("La sesión de conversación no contiene mensajes.");
-
-            sessionMessages = workflowSession.Messages;
-        }
-
+        List<ChatMessage> sessionMessages = workflowSession.Messages;
         sessionMessages.Add(message);
 
-        var workflow = _workflowFactory.CreateChatWorkflow(sessionId);
+        var workflow = _workflowFactory.CreateChatWorkflow(workflowSession.SessionId);
         await using StreamingRun run = await InProcessExecution.RunStreamingAsync(workflow, sessionMessages, cancellationToken: ct);
         await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
 
         List<ChatMessage>? newMessages = [];
         await foreach (var evt in run.WatchStreamAsync(ct))
         {
-            switch(evt)
+            switch (evt)
             {
                 case AgentResponseUpdateEvent agentResponse:
                     if (!string.IsNullOrEmpty(agentResponse.Update.Text))
@@ -99,9 +108,42 @@ internal class WorkflowChatManager(
         if (newMessages is not null)
             sessionMessages.AddRange(newMessages.Skip(sessionMessages.Count));
 
-        workflowSession = new WorkflowSession(sessionId, _userInfo.Id, sessionMessages);
-        await _cacheService.SetAsync($"chat:{sessionId}:state", workflowSession,
+        var approvalRequest = await _cacheService.GetAsync<ToolApprovalRequest>(ChatCacheKeyReference.ManualApproval(workflowSession.SessionId), ct);
+        if (approvalRequest is not null)
+        {
+            sessionMessages.Add(new ChatMessage(ChatRole.Tool, $"La herramienta {approvalRequest.ToolName} ha solicitado aprobación al usuario. Quedas a la espera de que el usuario te indique el resultado."));
+
+            yield return new ChatStreamEventApproval(approvalRequest.CallId, approvalRequest.ApprovalMessage);
+        }
+
+        workflowSession.Messages.AddRange(sessionMessages);
+        await _cacheService.SetAsync(ChatCacheKeyReference.State(workflowSession.SessionId), workflowSession,
             TimeSpan.FromMinutes(10),
             CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Recupera la sesión almacenada y valida que pertenezca al usuario actual y sea coherente.
+    /// </summary>
+    /// <param name="sessionId">Identificador único de la sesión de chat.</param>
+    /// <returns>La sesión almacenada, o <c>null</c> si todavía no existe.</returns>
+    /// <exception cref="UnauthorizedAccessException">La sesión pertenece a otro usuario.</exception>
+    /// <exception cref="InvalidOperationException">La sesión almacenada no es coherente.</exception>
+    private async Task<WorkflowSession> LoadSessionAsync(Guid sessionId)
+    {
+        var workflowSession = await _cacheService.GetAsync<WorkflowSession>(ChatCacheKeyReference.State(sessionId), CancellationToken.None);
+        if (workflowSession is null)
+            return new WorkflowSession(sessionId, _userInfo.Id, []);
+
+        if (workflowSession.UserId != _userInfo.Id)
+            throw new UnauthorizedAccessException("No tiene permiso para acceder a esta conversación.");
+
+        if (workflowSession.SessionId != sessionId)
+            throw new InvalidOperationException("El Id de sesión no coincide con la sesión almacenada.");
+
+        if (workflowSession.Messages is null)
+            throw new InvalidOperationException("La sesión de conversación no contiene mensajes.");
+
+        return workflowSession;
     }
 }

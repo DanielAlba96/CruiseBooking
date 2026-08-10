@@ -1,21 +1,27 @@
-﻿using Core.Application.Common.CQRS;
+﻿using Core.Agents.Common;
+using Core.Agents.Models;
+using Core.Application.Common.CQRS;
 using Core.Application.Models;
+using Core.Application.UseCases.Bookings;
+using Core.Application.UseCases.Payments;
 using Shared.Domain.Entities;
 using Shared.Domain.Exceptions;
 using Shared.Domain.Models;
+using Shared.Domain.Services;
 using System.ComponentModel;
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
-using Core.Application.UseCases.Bookings;
-using Core.Application.UseCases.Payments;
 
 namespace Core.Agents.Tools;
 
 /// <summary>
-/// Herramientas de posventa sobre las reservas ya existentes del usuario, expuestas al modelo de lenguaje.
+/// Herramientas de gestion de reservas existentes expuestas al modelo de lenguaje.
 /// </summary>
-internal sealed class PostSalesTools(IMediator mediator)
+internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheService, Guid sessionId)
 {
     private readonly IMediator _mediator = mediator;
+    private readonly ICacheService _cacheService = cacheService;
 
     [DisplayName("get_my_bookings")]
     [Description("Devuelve todas las reservas del usuario: su id, el crucero, el destino, las fechas, el número de pasajeros y su estado. Incluye can_pay y can_cancel, que indican si esa reserva admite pago manual o cancelación. Llámala siempre antes de operar sobre una reserva: es la única forma de saber qué reservas existen y cuál es su id.")]
@@ -131,7 +137,7 @@ internal sealed class PostSalesTools(IMediator mediator)
     }
 
     [DisplayName("pay_booking")]
-    [Description("Cobra manualmente una reserva pendiente de pago usando una tarjeta que el usuario ya tiene dada de alta. Requiere can_pay a true. Al invocarla se muestra al usuario un resumen que debe aprobar, así que avísale antes de llamarla. Destructiva e irreversible: mueve dinero real. El payment_method_id debe salir siempre de get_payment_methods; jamás lo construyas ni lo deduzcas de datos de tarjeta dictados por el usuario.")]
+    [Description("Genera un resumen del proceso de pago manual de una reserva existente para que el usario lo apruebe. Requiere can_pay a true")]
     public async Task<string> PayBooking(
         [Description("ID de la reserva obtenido de get_my_bookings. Nunca un número dicho por el usuario: no conoce los IDs")] int bookingId,
         [Description("Identificador del método de pago tal cual viene en payment_method_id de get_payment_methods. Nunca un número de tarjeta ni un valor inventado")] string paymentMethodId)
@@ -141,24 +147,26 @@ internal sealed class PostSalesTools(IMediator mediator)
             return JsonSerializer.Serialize(new { error = "Falta el método de pago. Llama antes a get_payment_methods y pide al usuario que elija una de sus tarjetas." });
         }
 
-        List<PaymentMethodResponse> paymentMethods;
         try
         {
-            paymentMethods = await _mediator.Send(new GetPaymentMethods());
-        }
-        catch (ControlledException ex)
-        {
-            return JsonSerializer.Serialize(new { error = ex.Message });
-        }
+            var paymentMethods = await _mediator.Send(new GetPaymentMethods());
+            var paymentMethod = paymentMethods.FirstOrDefault(p => p.Id == paymentMethodId);
+            if (paymentMethod is null)
+            {
+                return JsonSerializer.Serialize(new { error = "Ese método de pago no está dado de alta en la cuenta del usuario. Usa únicamente uno de los que devuelve get_payment_methods." });
+            }
 
-        if (!paymentMethods.Any(p => p.Id == paymentMethodId))
-        {
-            return JsonSerializer.Serialize(new { error = "Ese método de pago no está dado de alta en la cuenta del usuario. Usa únicamente uno de los que devuelve get_payment_methods." });
-        }
+            var booking = await _mediator.Send(new GetBookingDetail(bookingId));
+            var summary = BuildPaymentSummary(booking, paymentMethod);
 
-        try
-        {
-            await _mediator.Send(new PayBooking(bookingId, new PayBookingRequest(paymentMethodId)));
+            ToolApprovalRequest approvalRequest = new PayApprovalRequest(
+                $"{ApprovalToolNames.PayBooking}_{Guid.NewGuid()}",
+                ApprovalToolNames.PayBooking,
+                summary,
+                bookingId,
+                paymentMethodId);
+
+            await _cacheService.SetAsync(ChatCacheKeyReference.ManualApproval(sessionId), approvalRequest, TimeSpan.FromMinutes(10));
         }
         catch (ControlledException ex)
         {
@@ -169,18 +177,28 @@ internal sealed class PostSalesTools(IMediator mediator)
         {
             ok = true,
             booking_id = bookingId,
-            message = "Reserva cobrada. El usuario recibirá la factura por email y ya puede completar el check-in online."
+            message = "Se ha generado el resumen del cobro. Responde brevemente pidiendo al usuario que lo revise y confirme, sin incluir el resumen. Aun no se ha cobrado nada. El usuario te avisará cuando el pago sea aprobado o rechazado."
         });
     }
 
     [DisplayName("cancel_booking")]
-    [Description("Cancela una reserva del usuario. Requiere can_cancel a true. Si la reserva ya estaba cobrada se emite además el reembolso, y solo se permite mientras no haya empezado el periodo de check-in. Al invocarla se muestra al usuario un resumen que debe aprobar, así que avísale antes de llamarla. Destructiva e irreversible: no la ejecutes de forma especulativa ni sin la confirmación explícita del usuario.")]
+    [Description("Genera un resumen del proceso de cancelación de una reserva existente para que el usuario lo apruebe. Requiere can_cancel a true.")]
     public async Task<string> CancelBooking(
         [Description("ID de la reserva obtenido de get_my_bookings. Nunca un número dicho por el usuario: no conoce los IDs")] int bookingId)
     {
+        GetCurrentUserBookingDetailDtoResponse booking;
         try
         {
-            await _mediator.Send(new CancelBooking(bookingId));
+            booking = await _mediator.Send(new GetBookingDetail(bookingId));
+            var summary = BuildCancellationSummary(booking);
+
+            ToolApprovalRequest approvalRequest = new CancelBookingApprovalRequest(
+                $"{ApprovalToolNames.CancelBooking}_{Guid.NewGuid()}",
+                ApprovalToolNames.CancelBooking,
+                summary,
+                bookingId);
+
+            await _cacheService.SetAsync(ChatCacheKeyReference.ManualApproval(sessionId), approvalRequest, TimeSpan.FromMinutes(10));
         }
         catch (ControlledException ex)
         {
@@ -191,7 +209,94 @@ internal sealed class PostSalesTools(IMediator mediator)
         {
             ok = true,
             booking_id = bookingId,
-            message = "Reserva cancelada. Si estaba cobrada, el reembolso se ha emitido y tardará unos días en aparecer en la tarjeta."
+            message = "Se ha generado el resumen de la cancelación. Responde brevemente pidiendo al usuario que lo revise y confirme, sin incluir el resumen. Aun no se ha cancelado nada. El usuario te avisará cuando la cancelación sea aprobada o rechazada."
         });
     }
+
+    private static string BuildPaymentSummary(GetCurrentUserBookingDetailDtoResponse booking, PaymentMethodResponse paymentMethod)
+    {
+        var culture = CultureInfo.GetCultureInfo("es-ES");
+        var sb = new StringBuilder();
+
+        sb.AppendLine("# Resumen del cobro");
+        sb.AppendLine();
+
+        AppendBookingLines(sb, booking, culture);
+
+        sb.AppendLine();
+        sb.AppendLine("## Método de pago");
+        sb.AppendLine();
+        sb.AppendLine($"{paymentMethod.Card.Brand} terminada en {paymentMethod.Card.Last4} (caduca {paymentMethod.Card.ExpMonth:00}/{paymentMethod.Card.ExpYear})");
+
+        sb.AppendLine();
+        sb.AppendLine($"**Importe a cobrar: {GetBookingTotal(booking).ToString("C", culture)}**");
+
+        return sb.ToString();
+    }
+
+    private static string BuildCancellationSummary(GetCurrentUserBookingDetailDtoResponse booking)
+    {
+        var culture = CultureInfo.GetCultureInfo("es-ES");
+        var sb = new StringBuilder();
+
+        sb.AppendLine("# Resumen de la cancelación");
+        sb.AppendLine();
+
+        AppendBookingLines(sb, booking, culture);
+
+        sb.AppendLine();
+
+        if (booking.ChargedAt.HasValue)
+        {
+            sb.AppendLine($"La reserva ya está cobrada, así que se emitirá un reembolso de {GetBookingTotal(booking).ToString("C", culture)} que tardará unos días en aparecer en la tarjeta.");
+        }
+        else
+        {
+            sb.AppendLine("La reserva todavía no está cobrada, así que no habrá ningún reembolso.");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("**Esta operación es irreversible.**");
+
+        return sb.ToString();
+    }
+
+    private static void AppendBookingLines(StringBuilder sb, GetCurrentUserBookingDetailDtoResponse booking, CultureInfo culture)
+    {
+        sb.AppendLine($"| Reserva | {booking.Id} |");
+        sb.AppendLine("| --- | --- |");
+        sb.AppendLine($"| Crucero | {booking.Name} |");
+        sb.AppendLine($"| Destino | {booking.Destination} |");
+        sb.AppendLine($"| Barco | {booking.ShipName} |");
+        sb.AppendLine($"| Salida | {booking.StartDate.ToString("d", culture)} |");
+        sb.AppendLine($"| Regreso | {booking.EndDate.ToString("d", culture)} |");
+
+        sb.AppendLine();
+        sb.AppendLine("## Camarotes");
+        sb.AppendLine();
+        sb.AppendLine("| Camarote | Nº Pasajeros | Precio |");
+        sb.AppendLine("| --- | --- | --- |");
+
+        foreach (var cabin in booking.Cabins)
+        {
+            sb.AppendLine($"| {cabin.TypeName} | {cabin.Occupants} | {cabin.Price.ToString("C", culture)} |");
+        }
+
+        if (booking.Extras.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Extras");
+            sb.AppendLine();
+            sb.AppendLine("| Extra | Precio |");
+            sb.AppendLine("| --- | --- |");
+
+            foreach (var extra in booking.Extras)
+            {
+                sb.AppendLine($"| {extra.Name} | {extra.Price.ToString("C", culture)} |");
+            }
+        }
+    }
+
+    private static decimal GetBookingTotal(GetCurrentUserBookingDetailDtoResponse booking)
+        => booking.Cabins.Sum(c => c.Price) + booking.Extras.Sum(e => e.Price);
 }
