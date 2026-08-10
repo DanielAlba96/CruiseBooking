@@ -1,7 +1,7 @@
-﻿using Core.Agents.Common.Middleware;
+﻿using Core.Agents.Common;
+using Core.Agents.Common.Middleware;
 using Core.Agents.Models;
 using Core.Agents.Tools;
-using Core.Application.Common.CQRS;
 using Core.Application.Common.Exceptions;
 using Core.Application.Models;
 using Microsoft.Agents.AI;
@@ -19,6 +19,7 @@ namespace Core.Agents.Chat;
 /// <summary>
 /// Gestor de chat con un unico agente para la creacion de reservas.
 /// Utiliza MAF para gestionar la aprobación de herramientas.
+/// Esta es una versión antigua que ha sido reemplazada por la que usa workflows, se deja como referencia.
 /// </summary>
 public class SingleAgentChatManager(
     IChatClient chatClient,
@@ -27,7 +28,6 @@ public class SingleAgentChatManager(
     IExtraRepository extraRepository,
     IJobService jobService,
     ICacheService cacheService,
-    IMediator mediator,
     UserInfo userInfo,
     ILoggerFactory loggerFactory,
     FunctionLoggingMiddleware functionLoggingMiddleware) : IChatManager
@@ -38,7 +38,6 @@ public class SingleAgentChatManager(
     private readonly IExtraRepository _extraRepository = extraRepository;
     private readonly IJobService _jobService = jobService;
     private readonly ICacheService _cacheService = cacheService;
-    private readonly IMediator _mediator = mediator;
     private readonly UserInfo _userInfo = userInfo;
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
 
@@ -53,7 +52,7 @@ public class SingleAgentChatManager(
         bool approved,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var approvalRequest = await _cacheService.GetAsync<ToolApprovalRequestContent>($"chat:{sessionId}:approval:{toolCallId}", ct)
+        var approvalRequest = await _cacheService.GetAsync<ToolApprovalRequestContent>(ChatCacheKeyReference.MAFApproval(sessionId, toolCallId), ct)
             ?? throw new NotFoundException("Esta reserva ya no está disponible para su aprobación");
 
         var message = new ChatMessage(ChatRole.User, [approvalRequest.CreateResponse(approved)]);
@@ -66,7 +65,7 @@ public class SingleAgentChatManager(
         var agent = BuildAgent(sessionId);
 
         AgentSession session;
-        var cachedState = await _cacheService.GetAsync<JsonElement?>($"chat:{sessionId}:state", CancellationToken.None);
+        var cachedState = await _cacheService.GetAsync<JsonElement?>(ChatCacheKeyReference.State(sessionId), CancellationToken.None);
 
         if (cachedState is { ValueKind: JsonValueKind.Object } serializedSession)
         {
@@ -96,7 +95,7 @@ public class SingleAgentChatManager(
 
                     case ToolApprovalRequestContent approval:
                         var toolCallId = approval.ToolCall.CallId;
-                        await _cacheService.SetAsync($"chat:{sessionId}:approval:{toolCallId}", approval, TimeSpan.FromMinutes(10), CancellationToken.None);
+                        await _cacheService.SetAsync(ChatCacheKeyReference.MAFApproval(sessionId, toolCallId), approval, TimeSpan.FromMinutes(10), CancellationToken.None);
                         var summary = await BuildBookingSummary(sessionId, ct);
                         yield return new ChatStreamEventApproval(toolCallId, summary);
                         break;
@@ -109,12 +108,12 @@ public class SingleAgentChatManager(
         }
 
         var updatedState = await agent.SerializeSessionAsync(session, null, CancellationToken.None);
-        await _cacheService.SetAsync($"chat:{sessionId}:state", updatedState, TimeSpan.FromMinutes(10), CancellationToken.None);
+        await _cacheService.SetAsync(ChatCacheKeyReference.State(sessionId), updatedState, TimeSpan.FromMinutes(10), CancellationToken.None);
     }
 
     private AIAgent BuildAgent(Guid sessionId)
     {
-        var bookingTools = new BookingTools(_cruiseRepository, _cabinRepository, _extraRepository, _jobService, _cacheService, _userInfo, _mediator, sessionId);
+        var bookingTools = new BookingTools(_cruiseRepository, _cabinRepository, _extraRepository, _jobService, _cacheService, _userInfo, sessionId);
 
         var chatOptions = new ChatOptions
         {
@@ -132,8 +131,7 @@ public class SingleAgentChatManager(
                 AIFunctionFactory.Create(bookingTools.RemoveExtra),
                 AIFunctionFactory.Create(bookingTools.RestartBooking),
                 new ApprovalRequiredAIFunction(AIFunctionFactory.Create(bookingTools.ConfirmBooking))
-                ],
-            RawRepresentationFactory = _ => new OllamaSharp.Models.Chat.ChatRequest { Think = true }
+                ]
         };
 
         return _chatClient.AsAIAgent(new ChatClientAgentOptions
@@ -151,7 +149,7 @@ public class SingleAgentChatManager(
 
     private async Task<string> BuildBookingSummary(Guid sessionId, CancellationToken ct)
     {
-        var draft = await _cacheService.GetAsync<BookingDraft>($"chat:{sessionId}:draft", ct);
+        var draft = await _cacheService.GetAsync<BookingDraft>(ChatCacheKeyReference.Draft(sessionId), ct);
 
         var availableExtras = await _extraRepository.GetExtrasAsync(draft!.CruiseDateId);
         var extraPrices = availableExtras.ToDictionary(e => e.ExtraId, e => e.Price);

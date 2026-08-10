@@ -14,7 +14,7 @@ namespace Core.Agents.Chat;
 
 /// <summary>
 /// Gestor de chat en forma de workflow con handoff.
-/// Un agente de triage delega en 2 especialistas segun la petición del usuario
+/// Un agente de triage delega en 2 especialistas segun la petición del usuario.
 /// En el momento del desarrollo existe un bug en MAF que impide solicitar
 /// aprobacion para ejecutar herramientas cuando se usan workflows con handoff,
 /// asi que hay que hacerlo manualmente fuera de MAF.
