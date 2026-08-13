@@ -24,12 +24,14 @@ internal class WorkflowChatManager(
     IWorkflowFactory workflowFactory,
     ICacheService cacheService,
     UserInfo userInfo,
-    IServiceProvider serviceProvider) : IChatManager
+    IServiceProvider serviceProvider,
+    IChatReducer reducer) : IChatManager
 {
     private readonly ICacheService _cacheService = cacheService;
     private readonly UserInfo _userInfo = userInfo;
     private readonly IWorkflowFactory _workflowFactory = workflowFactory;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
+    private readonly IChatReducer _reducer = reducer;
 
     /// <inheritdoc />
     public async IAsyncEnumerable<ChatStreamEvent> StartChatStreamAsync(
@@ -70,13 +72,15 @@ internal class WorkflowChatManager(
             yield return e;
     }
 
-    private async IAsyncEnumerable<ChatStreamEvent> StreamChatCoreAsync(WorkflowSession workflowSession, ChatMessage message, [EnumeratorCancellation] CancellationToken ct = default)
+    private async IAsyncEnumerable<ChatStreamEvent> StreamChatCoreAsync(
+        WorkflowSession workflowSession,
+        ChatMessage message,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
-        List<ChatMessage> sessionMessages = workflowSession.Messages;
-        sessionMessages.Add(message);
+        workflowSession.Messages.Add(message);
 
         var workflow = _workflowFactory.CreateChatWorkflow(workflowSession.SessionId);
-        await using StreamingRun run = await InProcessExecution.RunStreamingAsync(workflow, sessionMessages, cancellationToken: ct);
+        await using StreamingRun run = await InProcessExecution.RunStreamingAsync(workflow, workflowSession.Messages, cancellationToken: ct);
         await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
 
         List<ChatMessage>? newMessages = [];
@@ -106,17 +110,22 @@ internal class WorkflowChatManager(
         }
 
         if (newMessages is not null)
-            sessionMessages.AddRange(newMessages.Skip(sessionMessages.Count));
+            workflowSession.Messages.AddRange(newMessages.Skip(workflowSession.Messages.Count));
 
         var approvalRequest = await _cacheService.GetAsync<ToolApprovalRequest>(ChatCacheKeyReference.ManualApproval(workflowSession.SessionId), ct);
         if (approvalRequest is not null)
         {
-            sessionMessages.Add(new ChatMessage(ChatRole.Tool, $"La herramienta {approvalRequest.ToolName} ha solicitado aprobación al usuario. Quedas a la espera de que el usuario te indique el resultado."));
+            workflowSession.Messages.Add(new ChatMessage(ChatRole.Assistant, $"La herramienta {approvalRequest.ToolName} ha solicitado aprobación al usuario. Quedas a la espera de que el usuario te indique el resultado."));
 
             yield return new ChatStreamEventApproval(approvalRequest.CallId, approvalRequest.ApprovalMessage);
         }
 
-        workflowSession.Messages.AddRange(sessionMessages);
+        var compactedMessages = await _reducer.ReduceAsync(workflowSession.Messages, ct);
+        workflowSession = workflowSession with
+        {
+            Messages = [.. compactedMessages]
+        };
+
         await _cacheService.SetAsync(ChatCacheKeyReference.State(workflowSession.SessionId), workflowSession,
             TimeSpan.FromMinutes(10),
             CancellationToken.None);

@@ -4,6 +4,7 @@ using Core.Agents.Common;
 using Core.Agents.Common.Middleware;
 using Core.Agents.Orchestration;
 using Core.Agents.Settings;
+using Microsoft.Agents.AI.Compaction;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,24 +30,23 @@ public static class DependencyInjection
         var openAIOptions = builder.Configuration.GetSection(OpenAISettings.SectionName).Get<OpenAISettings>()
             ?? new OpenAISettings();
 
+        IChatClient chatClient;
         if (openAIOptions.Enabled)
         {
-            builder.Services.AddSingleton<IChatClient>(_ =>
-            {
-                var client = new OpenAIClient(
+            chatClient = new OpenAIClient(
                     new ApiKeyCredential(openAIOptions.ApiKey),
-                    new OpenAIClientOptions { Endpoint = new Uri(openAIOptions.BaseUrl) });
-
-                return client.GetChatClient(openAIOptions.Model).AsIChatClient();
-            });
+                    new OpenAIClientOptions { Endpoint = new Uri(openAIOptions.BaseUrl) })
+                .GetChatClient(openAIOptions.Model).AsIChatClient();
         }
         else
         {
             var ollamaOptions = builder.Configuration.GetSection(OllamaSettings.SectionName).Get<OllamaSettings>()
                 ?? new OllamaSettings();
 
-            builder.Services.AddSingleton<IChatClient>(_ => new OllamaApiClient(new Uri(ollamaOptions.BaseUrl), ollamaOptions.Model));
+            chatClient = new OllamaApiClient(new Uri(ollamaOptions.BaseUrl), ollamaOptions.Model);
         }
+
+        builder.Services.AddSingleton<IChatClient>(chatClient);
 
         builder.Services.AddSingleton<FunctionLoggingMiddleware>();
         builder.Services.AddScoped<IAgentFactory, AgentFactory>();
@@ -56,6 +56,12 @@ public static class DependencyInjection
         builder.Services.AddKeyedScoped<IToolApprovalHandler, ConfirmBookingApprovalHandler>(ApprovalToolNames.ConfirmBooking);
         builder.Services.AddKeyedScoped<IToolApprovalHandler, PayBookingApprovalHandler>(ApprovalToolNames.PayBooking);
         builder.Services.AddKeyedScoped<IToolApprovalHandler, CancelBookingApprovalHandler>(ApprovalToolNames.CancelBooking);
+
+#pragma warning disable MAAI001 // El framework de compaction esta actualmente en fase experimental
+        builder.Services.AddSingleton<IChatReducer>(_ => new PipelineCompactionStrategy(
+            new ToolResultCompactionStrategy(CompactionTriggers.TokensExceed(16_000), 10),
+            new SummarizationCompactionStrategy(chatClient, CompactionTriggers.TokensExceed(32_000), 8)).AsChatReducer());
+#pragma warning restore MAAI001 // El framework de compaction esta actualmente en fase experimental
 
         return builder;
     }

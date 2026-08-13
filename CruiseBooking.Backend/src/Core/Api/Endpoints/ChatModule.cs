@@ -1,6 +1,7 @@
 ﻿using Carter;
 using Core.Agents.Chat;
 using Core.Agents.Models;
+using Core.Application.Common.Exceptions;
 using Core.Application.Models;
 using System.Diagnostics;
 using System.Net.ServerSentEvents;
@@ -26,6 +27,9 @@ public sealed class ChatModule : ICarterModule
             IChatManager chatManager,
             CancellationToken ct) =>
         {
+            if (request.Message.Length > 2_000)
+                throw new ValidationException("El mensaje es demasiado grande");
+
             var events = chatManager
                 .StartChatStreamAsync(sessionId, request.Message, ct)
                 .Select(ToSseItem);

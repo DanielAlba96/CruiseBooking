@@ -1,5 +1,4 @@
-﻿using Shared.Domain.Exceptions;
-using Shared.Domain.Entities;
+﻿using Shared.Domain.Entities;
 using Shared.Domain.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -10,6 +9,16 @@ namespace Shared.Persistence.Repositories;
 public class CabinRepository(IDbContextFactory<CruisesDbContext> contextFactory, IConfiguration configuration) : ICabinRepository, IAsyncDisposable
 {
     private readonly CruisesDbContext _context = contextFactory.CreateDbContext();
+
+    public async Task<ShipCabin?> GetCabinById(int cabinId)
+    {
+        using var context = contextFactory.CreateDbContext();
+
+        return await context.ShipCabins
+             .Where(x => x.Id == cabinId)
+             .Include(x => x.CabinType)
+             .FirstOrDefaultAsync();
+    }
 
     /// <summary>
     /// Obtiene las cabinas de un barco.
@@ -62,10 +71,9 @@ public class CabinRepository(IDbContextFactory<CruisesDbContext> contextFactory,
                     .SelectMany(b => b.Cabins)
                     .Count(bc => bc.CabinId == c.Id),
                 Locked = context.LockedCabins
-                    .Where(l => l.CruiseDateId == cruiseDateId
+                    .Count(l => l.CruiseDateId == cruiseDateId
                         && l.CabinId == c.Id
                         && l.LastUpdatedAt >= expirationTime)
-                    .Count()
             })
             .Select(x => new ShipCabin
             {
@@ -104,17 +112,12 @@ public class CabinRepository(IDbContextFactory<CruisesDbContext> contextFactory,
                         .SelectMany(b => b.Cabins)
                         .Count(bc => bc.CabinId == c.Id)
                     - context.LockedCabins
-                        .Where(l => l.CruiseDateId == cruiseDateId
+                        .Count(l => l.CruiseDateId == cruiseDateId
                             && l.CabinId == c.Id
                             && l.LastUpdatedAt >= expirationTime)
-                        .Count()
             })
-            .FirstOrDefaultAsync();
-
-        if (cabin is null)
-        {
-            throw new CabinNotInCruiseException(cabinId);
-        }
+            .FirstOrDefaultAsync()
+            ?? throw new CabinNotInCruiseException(cabinId);
 
         if (cabin.Available < 1)
         {

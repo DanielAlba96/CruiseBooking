@@ -24,7 +24,7 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
     private readonly ICacheService _cacheService = cacheService;
 
     [DisplayName("get_my_bookings")]
-    [Description("Devuelve todas las reservas del usuario: su id, el crucero, el destino, las fechas, el número de pasajeros y su estado. Incluye can_pay y can_cancel, que indican si esa reserva admite pago manual o cancelación. Llámala siempre antes de operar sobre una reserva: es la única forma de saber qué reservas existen y cuál es su id.")]
+    [Description("Devuelve todas las reservas del usuario")]
     public async Task<string> GetMyBookings()
     {
         IReadOnlyList<GetCurrentUserBookingSummaryDtoResponse> bookings;
@@ -34,7 +34,7 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
         }
         catch (ControlledException ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message });
+            return JsonSerializer.Serialize(new { ok = true, error = ex.Message });
         }
 
         var result = bookings.Select(b => new
@@ -54,9 +54,9 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
     }
 
     [DisplayName("get_booking_detail")]
-    [Description("Devuelve el detalle de UNA reserva del usuario: barco, itinerario, camarotes con sus ocupantes y precios, extras contratados e importe total. Úsala cuando el usuario pregunte por los detalles de una reserva concreta o antes de pagarla o cancelarla, para poder confirmarle sobre qué está operando.")]
+    [Description("Devuelve el desglose de camarotes, extras y precios para una reserva existente")]
     public async Task<string> GetBookingDetail(
-        [Description("ID de la reserva obtenido de get_my_bookings. Nunca un número dicho por el usuario: no conoce los IDs")] int bookingId)
+        [Description("Id de la reserva")] int bookingId)
     {
         GetCurrentUserBookingDetailDtoResponse booking;
         try
@@ -74,18 +74,6 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
         {
             ok = true,
             booking_id = booking.Id,
-            cruise_name = booking.Name,
-            destination = booking.Destination,
-            origin_port = booking.OriginPort,
-            itinerary = booking.Itinerary,
-            ship_name = booking.ShipName,
-            start_date = booking.StartDate.ToString("yyyy-MM-dd"),
-            end_date = booking.EndDate.ToString("yyyy-MM-dd"),
-            duration_in_days = booking.DurationInDays,
-            status = Enum.GetName(booking.Status),
-            can_pay = booking.Status is BookingStatus.Created or BookingStatus.PendingPayment,
-            can_cancel = booking.Status != BookingStatus.Canceled,
-            is_charged = booking.ChargedAt.HasValue,
             cabins = booking.Cabins.Select(c => new
             {
                 name = c.TypeName,
@@ -102,7 +90,7 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
     }
 
     [DisplayName("get_payment_methods")]
-    [Description("Devuelve las tarjetas que el usuario ya tiene dadas de alta en su cuenta, con su marca, sus últimos cuatro dígitos y su caducidad. Es la única fuente válida del payment_method_id que espera pay_booking. No existe ninguna herramienta para dar de alta, modificar ni borrar tarjetas: si la lista viene vacía, el pago no se puede hacer desde la conversación y el usuario debe añadir la tarjeta desde su perfil en la web.")]
+    [Description("Devuelve los medios de pago que el usuario tiene dados de alta en su cuenta")]
     public async Task<string> GetPaymentMethods()
     {
         List<PaymentMethodResponse> paymentMethods;
@@ -112,7 +100,7 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
         }
         catch (ControlledException ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message });
+            return JsonSerializer.Serialize(new { ok = false, error = ex.Message });
         }
 
         if (paymentMethods.Count == 0)
@@ -137,14 +125,14 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
     }
 
     [DisplayName("pay_booking")]
-    [Description("Genera un resumen del proceso de pago manual de una reserva existente para que el usario lo apruebe. Requiere can_pay a true")]
+    [Description("Genera un resumen del proceso de pago manual de una reserva existente para que el usario lo apruebe")]
     public async Task<string> PayBooking(
-        [Description("ID de la reserva obtenido de get_my_bookings. Nunca un número dicho por el usuario: no conoce los IDs")] int bookingId,
-        [Description("Identificador del método de pago tal cual viene en payment_method_id de get_payment_methods. Nunca un número de tarjeta ni un valor inventado")] string paymentMethodId)
+        [Description("Id de la reserva")] int bookingId,
+        [Description("Identificador del método de pago elegido")] string paymentMethodId)
     {
         if (string.IsNullOrWhiteSpace(paymentMethodId))
         {
-            return JsonSerializer.Serialize(new { error = "Falta el método de pago. Llama antes a get_payment_methods y pide al usuario que elija una de sus tarjetas." });
+            return JsonSerializer.Serialize(new { ok = false, error = "Falta el método de pago. Llama antes a get_payment_methods y pide al usuario que elija una de sus tarjetas." });
         }
 
         try
@@ -153,7 +141,7 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
             var paymentMethod = paymentMethods.FirstOrDefault(p => p.Id == paymentMethodId);
             if (paymentMethod is null)
             {
-                return JsonSerializer.Serialize(new { error = "Ese método de pago no está dado de alta en la cuenta del usuario. Usa únicamente uno de los que devuelve get_payment_methods." });
+                return JsonSerializer.Serialize(new { ok = false, error = "Ese método de pago no está dado de alta en la cuenta del usuario. Usa únicamente uno de los que devuelve get_payment_methods." });
             }
 
             var booking = await _mediator.Send(new GetBookingDetail(bookingId));
@@ -170,21 +158,21 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
         }
         catch (ControlledException ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message });
+            return JsonSerializer.Serialize(new { ok = false, error = ex.Message });
         }
 
         return JsonSerializer.Serialize(new
         {
             ok = true,
-            booking_id = bookingId,
+            bookingId,
             message = "Se ha generado el resumen del cobro. Responde brevemente pidiendo al usuario que lo revise y confirme, sin incluir el resumen. Aun no se ha cobrado nada. El usuario te avisará cuando el pago sea aprobado o rechazado."
         });
     }
 
     [DisplayName("cancel_booking")]
-    [Description("Genera un resumen del proceso de cancelación de una reserva existente para que el usuario lo apruebe. Requiere can_cancel a true.")]
+    [Description("Genera un resumen del proceso de cancelación de una reserva existente para que el usuario lo apruebe")]
     public async Task<string> CancelBooking(
-        [Description("ID de la reserva obtenido de get_my_bookings. Nunca un número dicho por el usuario: no conoce los IDs")] int bookingId)
+        [Description("Id de la reserva")] int bookingId)
     {
         GetCurrentUserBookingDetailDtoResponse booking;
         try
@@ -202,13 +190,13 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
         }
         catch (ControlledException ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message });
+            return JsonSerializer.Serialize(new { ok = false, error = ex.Message });
         }
 
         return JsonSerializer.Serialize(new
         {
             ok = true,
-            booking_id = bookingId,
+            bookingId,
             message = "Se ha generado el resumen de la cancelación. Responde brevemente pidiendo al usuario que lo revise y confirme, sin incluir el resumen. Aun no se ha cancelado nada. El usuario te avisará cuando la cancelación sea aprobada o rechazada."
         });
     }

@@ -29,7 +29,7 @@ public sealed class CabinModule : ICarterModule
             IMediator mediator,
             CancellationToken cancellationToken) =>
         {
-            var lockedCabinId = await mediator.Send(new LockCabin(request.CruiseDateId, cabinId, request.Price, request.Occupants), cancellationToken);
+            var lockedCabinId = await mediator.Send(new LockCabin(request.CruiseDateId, cabinId, request.Occupants), cancellationToken);
             return Results.Ok(lockedCabinId);
         });
 

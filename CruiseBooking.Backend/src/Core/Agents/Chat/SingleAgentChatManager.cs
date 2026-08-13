@@ -120,7 +120,6 @@ public class SingleAgentChatManager(
             Instructions = BuildSystemPrompt(),
             Tools = [
                 AIFunctionFactory.Create(bookingTools.SearchCruises),
-                AIFunctionFactory.Create(bookingTools.GetCruiseDates),
                 AIFunctionFactory.Create(bookingTools.GetAvailableCabins),
                 AIFunctionFactory.Create(bookingTools.GetExtras),
                 AIFunctionFactory.Create(bookingTools.GetBookingDraft),

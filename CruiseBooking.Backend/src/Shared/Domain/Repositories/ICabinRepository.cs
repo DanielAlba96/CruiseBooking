@@ -10,6 +10,11 @@ public interface ICabinRepository
     /// <returns>Consulta de cabinas del barco.</returns>
     IQueryable<ShipCabin> GetShipCabins(int shipId);
 
+    /// <summary>Obtiene una cabina del barco por identificador</summary>
+    /// <param name="cabinId">Identificador de la cabina del barco.</param>
+    /// <returns>Datos de la cabina del barco</returns>
+    Task<ShipCabin?> GetCabinById(int cabinId);
+
     /// <summary>Obtiene las cabinas disponibles por identificador de la fecha del crucero.</summary>
     /// <param name="cruiseDateId">Identificador de la fecha del crucero.</param>
     /// <returns>Lista de cabinas para la fecha del crucero especificada.</returns>
