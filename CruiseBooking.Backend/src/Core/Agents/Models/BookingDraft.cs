@@ -22,7 +22,7 @@ internal sealed class BookingDraft
     /// <summary>Fecha de salida.</summary>
     public DateTime DepartureDate { get; set; } = DateTime.MinValue;
 
-    /// <summary>Lista de cabinas seleccionadas en el borrador.</summary>
+    /// <summary>Lista de camarotes seleccionados en el borrador.</summary>
     public List<DraftCabin> Cabins { get; set; } = [];
 
     /// <summary>Lista de extras seleccionados en el borrador.</summary>
@@ -30,21 +30,21 @@ internal sealed class BookingDraft
 }
 
 /// <summary>
-/// Cabina seleccionada dentro de un <see cref="BookingDraft"/>, con su precio y aforo máximo.
+/// Camarote seleccionado dentro de un <see cref="BookingDraft"/>, con su precio y aforo máximo.
 /// Los datos de los pasajeros se recogen después de la reserva mediante el check-in online.
 /// </summary>
 internal sealed class DraftCabin
 {
-    /// <summary>Identificador único de la cabina.</summary>
+    /// <summary>Identificador único del camarote.</summary>
     public int Id { get; set; }
 
-    /// <summary>Nombra de la cabina.</summary>
+    /// <summary>Nombra del camarote.</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Precio de la cabina en el momento de añadirse al borrador.</summary>
+    /// <summary>Precio del camarote en el momento de añadirse al borrador.</summary>
     public decimal Price { get; set; }
 
-    /// <summary>Cantidad de pasajeros que ocuparán la cabina.</summary>
+    /// <summary>Cantidad de pasajeros que ocuparán el camarote.</summary>
     public int Occupants { get; set; }
 }
 

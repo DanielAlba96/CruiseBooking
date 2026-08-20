@@ -1,8 +1,9 @@
 ﻿using Core.Agents.Chat;
 using Core.Agents.Chat.Approvals;
+using Core.Agents.Chat.Compaction;
+using Core.Agents.Chat.Orchestration;
 using Core.Agents.Common;
 using Core.Agents.Common.Middleware;
-using Core.Agents.Orchestration;
 using Core.Agents.Settings;
 using Microsoft.Agents.AI.Compaction;
 using Microsoft.Extensions.AI;
@@ -21,7 +22,7 @@ namespace Core.Agents;
 public static class DependencyInjection
 {
     /// <summary>
-    /// Registra los servicios de la capa de de los agentes IA .
+    /// Registra los servicios de la capa de los agentes IA .
     /// </summary>
     /// <param name="builder">El builder de la aplicación host.</param>
     /// <returns>El mismo builder, para poder encadenar llamadas.</returns>
@@ -53,14 +54,15 @@ public static class DependencyInjection
         builder.Services.AddScoped<IWorkflowFactory, WorkflowFactory>();
         builder.Services.AddScoped<IChatManager, WorkflowChatManager>();
 
-        builder.Services.AddKeyedScoped<IToolApprovalHandler, ConfirmBookingApprovalHandler>(ApprovalToolNames.ConfirmBooking);
-        builder.Services.AddKeyedScoped<IToolApprovalHandler, PayBookingApprovalHandler>(ApprovalToolNames.PayBooking);
-        builder.Services.AddKeyedScoped<IToolApprovalHandler, CancelBookingApprovalHandler>(ApprovalToolNames.CancelBooking);
+        builder.Services.AddKeyedScoped<IToolApprovalHandler, ConfirmBookingApprovalHandler>(BookingToolNames.ConfirmBooking);
+        builder.Services.AddKeyedScoped<IToolApprovalHandler, PayBookingApprovalHandler>(PostSalesToolNames.PayBooking);
+        builder.Services.AddKeyedScoped<IToolApprovalHandler, CancelBookingApprovalHandler>(PostSalesToolNames.CancelBooking);
 
 #pragma warning disable MAAI001 // El framework de compaction esta actualmente en fase experimental
         builder.Services.AddSingleton<IChatReducer>(_ => new PipelineCompactionStrategy(
-            new ToolResultCompactionStrategy(CompactionTriggers.TokensExceed(16_000), 10),
-            new SummarizationCompactionStrategy(chatClient, CompactionTriggers.TokensExceed(32_000), 8)).AsChatReducer());
+            new BookingContextCompactionStrategy(),
+            new TruncationCompactionStrategy(CompactionTriggers.TokensExceed(8_000), 16, CompactionTriggers.TokensExceed(2_000))
+        ).AsChatReducer());
 #pragma warning restore MAAI001 // El framework de compaction esta actualmente en fase experimental
 
         return builder;

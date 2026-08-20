@@ -94,7 +94,7 @@ public class GetCurrentUserBookingDetailDtoResponse
     public int DurationInDays { get; set; }
 
     /// <summary>
-    /// Nombre del buque.
+    /// Nombre del barco.
     /// </summary>
     /// <value>Cadena de texto con el nombre del barco.</value>
     public string ShipName { get; set; } = string.Empty;
@@ -130,9 +130,9 @@ public class GetCurrentUserBookingDetailDtoResponse
     public DateTime? RefundedAt { get; set; }
 
     /// <summary>
-    /// Lista de cabinas asociadas a la reserva.
+    /// Lista de camarotes asociados a la reserva.
     /// </summary>
-    /// <value>Colección de detalles de cabinas.</value>
+    /// <value>Colección de detalles de camarotes.</value>
     public List<GetCurrentUserBookingCabinDtoResponse> Cabins { get; set; } = new();
 
     /// <summary>

@@ -117,20 +117,24 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="CabinNotInCruise" xml:space="preserve">
-    <value>El camarote {0} no pertenece al barco de este crucero.</value>
-    <comment>{0} = identificador del camarote.</comment>
+  <data name="ApprovalRequestTypeMismatch" xml:space="preserve">
+    <value>La solicitud de aprobación de la herramienta {0} no corresponde al tipo {1} esperado por el manejador.</value>
+    <comment>{0} = nombre de la herramienta; {1} = tipo concreto de solicitud que atiende el manejador. Ocurre con entradas de caché sin discriminador polimórfico.</comment>
   </data>
-  <data name="InsufficientCabinAvailability" xml:space="preserve">
-    <value>No hay disponibilidad suficiente para el camarote {0}.</value>
-    <comment>{0} = identificador del camarote.</comment>
+  <data name="ChatStreamFailed" xml:space="preserve">
+    <value>Se ha producido un error que impide continuar con la conversación.</value>
+    <comment>El workflow de chat falla o la preparación de una aprobación no se puede completar.</comment>
   </data>
-  <data name="InvalidCabinOccupancy" xml:space="preserve">
-    <value>El número de pasajeros ({1}) del camarote {0} debe estar entre 1 y {2}.</value>
-    <comment>{0} = identificador del camarote, {1} = pasajeros solicitados, {2} = aforo máximo del tipo de camarote.</comment>
+  <data name="SessionAccessDenied" xml:space="preserve">
+    <value>No tiene permiso para acceder a esta conversación.</value>
+    <comment>El usuario autenticado no coincide con el propietario de la sesión almacenada.</comment>
   </data>
-  <data name="UserNotFound" xml:space="preserve">
-    <value>Usuario no encontrado</value>
-    <comment>No existe en base de datos el usuario solicitado.</comment>
+  <data name="SessionHasNoMessages" xml:space="preserve">
+    <value>La sesión de conversación no contiene mensajes.</value>
+    <comment>La sesión recuperada de la caché tiene la lista de mensajes a nulo.</comment>
+  </data>
+  <data name="SessionIdMismatch" xml:space="preserve">
+    <value>El Id de sesión no coincide con la sesión almacenada.</value>
+    <comment>El identificador solicitado no coincide con el de la sesión recuperada de la caché.</comment>
   </data>
 </root>

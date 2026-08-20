@@ -27,7 +27,7 @@ public class GetCheckInDtoResponse
     /// <value>Fecha de desembarque (UTC).</value>
     public DateTime EndDate { get; set; }
 
-    /// <summary>Lista de cabinas asociadas a la reserva.</summary>
-    /// <value>Colección de detalles de cabinas.</value>
+    /// <summary>Lista de camarotes asociados a la reserva.</summary>
+    /// <value>Colección de detalles de camarotes.</value>
     public List<GetCheckInCabinDtoResponse> Cabins { get; set; } = [];
 }

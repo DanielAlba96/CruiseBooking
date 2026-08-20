@@ -2,7 +2,6 @@
 using CruiseBooking.Integrations;
 using CruiseBooking.Integrations.Models;
 using CruiseBooking.Vms;
-using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using MudBlazor;
 using System.Net.ServerSentEvents;
@@ -19,6 +18,7 @@ public partial class Chat(IChatApi chatApi, IDialogService dialogService, ISnack
     const string TokenEvent = "token";
     const string ApprovalRequiredEvent = "approval_required";
     const string FailedEvent = "failed";
+    const string GreetingPrompt = "Inicia la conversación saludando brevemente al usuario y ofreciéndole ayuda en la reserva de cruceros";
 
     static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -45,7 +45,7 @@ public partial class Chat(IChatApi chatApi, IDialogService dialogService, ISnack
     protected override async Task OnInitializedAsync()
     {
         _sessionId = Guid.NewGuid();
-        await StreamAssistantAsync("Inicia la conversación saludando brevemente al usuario y ofreciéndole ayuda en la reserva de cruceros");
+        await StreamAssistantAsync(GreetingPrompt);
     }
 
     async Task OnInputKeyUp(KeyboardEventArgs e)
@@ -68,13 +68,33 @@ public partial class Chat(IChatApi chatApi, IDialogService dialogService, ISnack
 
     async Task StreamAssistantAsync(string triggerMessage)
     {
+        _isStreaming = true;
+        try
+        {
+            var errorReason = await RunStreamAsync(triggerMessage);
+            while (errorReason != null)
+            {
+                _messages.Clear();
+                _messages.Add(new ChatMessageVm { IsError = true, Content = errorReason });
+                _sessionId = Guid.NewGuid();
+                errorReason = await RunStreamAsync(GreetingPrompt);
+            }
+        }
+        finally
+        {
+            _isStreaming = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task<string?> RunStreamAsync(string triggerMessage)
+    {
         var assistant = new ChatMessageVm { IsUser = false, IsStreaming = true };
         _messages.Add(assistant);
-        _isStreaming = true;
         _cts = new CancellationTokenSource();
 
         var received = 0;
-        var failed = false;
+        string? errorReason = null;
         try
         {
             var stream = ReadEventsAsync(
@@ -99,17 +119,14 @@ public partial class Chat(IChatApi chatApi, IDialogService dialogService, ISnack
                             break;
 
                         case ChatStreamEventError error:
-                            failed = true;
+                            errorReason = error.Reason;
+                            pendingApproval = null;
                             _logger.LogError("El asistente devolvió un error (sesión {SessionId}): {Reason}", _sessionId, error.Reason);
-                            _snackbar.Add(error.Reason, Severity.Error);
-
-                            if (string.IsNullOrEmpty(assistant.Content))
-                            {
-                                assistant.Content = error.Reason;
-                                await InvokeAsync(StateHasChanged);
-                            }
                             break;
                     }
+
+                    if (errorReason is not null)
+                        break;
                 }
 
                 stream = null;
@@ -124,7 +141,7 @@ public partial class Chat(IChatApi chatApi, IDialogService dialogService, ISnack
                 }
             }
 
-            if (received == 0 && !failed)
+            if (received == 0 && errorReason is null)
             {
                 _logger.LogWarning("El stream de chat se cerró sin tokens (sesión {SessionId})", _sessionId);
                 assistant.Content = "(sin respuesta)";
@@ -143,11 +160,12 @@ public partial class Chat(IChatApi chatApi, IDialogService dialogService, ISnack
         finally
         {
             assistant.IsStreaming = false;
-            _isStreaming = false;
             _cts?.Dispose();
             _cts = null;
             await InvokeAsync(StateHasChanged);
         }
+
+        return errorReason;
     }
 
     async Task<bool> ConfirmApprovalAsync(string summary)
@@ -158,7 +176,7 @@ public partial class Chat(IChatApi chatApi, IDialogService dialogService, ISnack
         };
 
         var dialog = await _dialogService.ShowAsync<ApprovalDialog>(
-            title: "Confirmar reserva",
+            title: "Aprobación necesaria",
             parameters: parameters,
             options: ApprovalDialogOptions);
 
@@ -193,7 +211,7 @@ public partial class Chat(IChatApi chatApi, IDialogService dialogService, ISnack
         : "max-width: 75%; background: var(--mud-palette-background-grey);";
 
     /// <summary>
-    /// Cleans up the chat session when the component is disposed.
+    /// Limpia la sesion de chat cuando se elimina el componente
     /// </summary>
     public ValueTask DisposeAsync()
     {

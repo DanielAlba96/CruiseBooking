@@ -23,7 +23,7 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
     private readonly IMediator _mediator = mediator;
     private readonly ICacheService _cacheService = cacheService;
 
-    [DisplayName("get_my_bookings")]
+    [DisplayName(PostSalesToolNames.GetMyBookings)]
     [Description("Devuelve todas las reservas del usuario")]
     public async Task<string> GetMyBookings()
     {
@@ -53,7 +53,7 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
         return JsonSerializer.Serialize(new { ok = true, bookings = result });
     }
 
-    [DisplayName("get_booking_detail")]
+    [DisplayName(PostSalesToolNames.GetBookingDetail)]
     [Description("Devuelve el desglose de camarotes, extras y precios para una reserva existente")]
     public async Task<string> GetBookingDetail(
         [Description("Id de la reserva")] int bookingId)
@@ -89,7 +89,7 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
         });
     }
 
-    [DisplayName("get_payment_methods")]
+    [DisplayName(PostSalesToolNames.GetPaymentMethods)]
     [Description("Devuelve los medios de pago que el usuario tiene dados de alta en su cuenta")]
     public async Task<string> GetPaymentMethods()
     {
@@ -124,7 +124,7 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
         return JsonSerializer.Serialize(new { ok = true, payment_methods = result });
     }
 
-    [DisplayName("pay_booking")]
+    [DisplayName(PostSalesToolNames.PayBooking)]
     [Description("Genera un resumen del proceso de pago manual de una reserva existente para que el usario lo apruebe")]
     public async Task<string> PayBooking(
         [Description("Id de la reserva")] int bookingId,
@@ -148,8 +148,8 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
             var summary = BuildPaymentSummary(booking, paymentMethod);
 
             ToolApprovalRequest approvalRequest = new PayApprovalRequest(
-                $"{ApprovalToolNames.PayBooking}_{Guid.NewGuid()}",
-                ApprovalToolNames.PayBooking,
+                $"{PostSalesToolNames.PayBooking}_{Guid.NewGuid()}",
+                PostSalesToolNames.PayBooking,
                 summary,
                 bookingId,
                 paymentMethodId);
@@ -165,11 +165,11 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
         {
             ok = true,
             bookingId,
-            message = "Se ha generado el resumen del cobro. Responde brevemente pidiendo al usuario que lo revise y confirme, sin incluir el resumen. Aun no se ha cobrado nada. El usuario te avisará cuando el pago sea aprobado o rechazado."
+            message = "Se ha generado el resumen del cobro. Responde brevemente pidiendo al usuario que lo revise y confirme, sin incluir el resumen."
         });
     }
 
-    [DisplayName("cancel_booking")]
+    [DisplayName(PostSalesToolNames.CancelBooking)]
     [Description("Genera un resumen del proceso de cancelación de una reserva existente para que el usuario lo apruebe")]
     public async Task<string> CancelBooking(
         [Description("Id de la reserva")] int bookingId)
@@ -181,8 +181,8 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
             var summary = BuildCancellationSummary(booking);
 
             ToolApprovalRequest approvalRequest = new CancelBookingApprovalRequest(
-                $"{ApprovalToolNames.CancelBooking}_{Guid.NewGuid()}",
-                ApprovalToolNames.CancelBooking,
+                $"{PostSalesToolNames.CancelBooking}_{Guid.NewGuid()}",
+                PostSalesToolNames.CancelBooking,
                 summary,
                 bookingId);
 
@@ -197,7 +197,7 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
         {
             ok = true,
             bookingId,
-            message = "Se ha generado el resumen de la cancelación. Responde brevemente pidiendo al usuario que lo revise y confirme, sin incluir el resumen. Aun no se ha cancelado nada. El usuario te avisará cuando la cancelación sea aprobada o rechazada."
+            message = "Se ha generado el resumen de la cancelación. Responde brevemente pidiendo al usuario que lo revise y confirme, sin incluir el resumen."
         });
     }
 

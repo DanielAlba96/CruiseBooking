@@ -21,7 +21,7 @@ public class CabinRepository(IDbContextFactory<CruisesDbContext> contextFactory,
     }
 
     /// <summary>
-    /// Obtiene las cabinas de un barco.
+    /// Obtiene los camarotes de un barco.
     /// </summary>
     public IQueryable<ShipCabin> GetShipCabins(int shipId)
     {
@@ -46,7 +46,7 @@ public class CabinRepository(IDbContextFactory<CruisesDbContext> contextFactory,
     }
 
     /// <summary>
-    /// Obtiene las cabinas disponibles de una fecha de crucero.
+    /// Obtiene los camarotes disponibles de una fecha de crucero.
     /// </summary>
     public async Task<IReadOnlyList<ShipCabin>> GetCabinsByCruiseDate(int cruiseDateId)
     {
@@ -85,7 +85,7 @@ public class CabinRepository(IDbContextFactory<CruisesDbContext> contextFactory,
     }
 
     /// <summary>
-    /// Bloquea una cabina para una reserva.
+    /// Bloquea un camarote para una reserva.
     /// </summary>
     public async Task<int> LockCabin(int cruiseDateId, int userId, int cabinId, decimal price, int occupants)
     {
@@ -148,7 +148,7 @@ public class CabinRepository(IDbContextFactory<CruisesDbContext> contextFactory,
     }
 
     /// <summary>
-    /// Desbloquea una cabina previamente bloqueada.
+    /// Desbloquea un camarote previamente bloqueado.
     /// </summary>
     public async Task UnlockCabin(int cruiseDateId, int cabinId, int userId)
     {
@@ -174,7 +174,7 @@ public class CabinRepository(IDbContextFactory<CruisesDbContext> contextFactory,
     }
 
     /// <summary>
-    /// Obtiene las cabinas bloqueadas de un usuario para una fecha de crucero.
+    /// Obtiene los camarotes bloqueados de un usuario para una fecha de crucero.
     /// </summary>
     public async Task<IReadOnlyList<LockedCabin>> GetLockedCabins(int cruiseDateId, int userId)
     {
@@ -198,7 +198,7 @@ public class CabinRepository(IDbContextFactory<CruisesDbContext> contextFactory,
     }
 
     /// <summary>
-    /// Limpia las cabinas bloqueadas de un usuario para una fecha de crucero.
+    /// Limpia los camarotes bloqueados de un usuario para una fecha de crucero.
     /// </summary>
     public async Task ClearLockedCabins(int cruiseDateId, int userId)
     {
@@ -210,7 +210,7 @@ public class CabinRepository(IDbContextFactory<CruisesDbContext> contextFactory,
     }
 
     /// <summary>
-    /// Limpia múltiples cabinas bloqueadas por sus identificadores.
+    /// Limpia múltiples camarotes bloqueados por sus identificadores.
     /// </summary>
     public async Task ClearLockedCabinsBulk(IReadOnlyList<int> lockedCabinsIds, CancellationToken cancellationToken)
     {

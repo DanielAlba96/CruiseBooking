@@ -1,6 +1,6 @@
-﻿﻿using Microsoft.Agents.AI.Workflows;
+﻿using Microsoft.Agents.AI.Workflows;
 
-namespace Core.Agents.Orchestration;
+namespace Core.Agents.Chat.Orchestration;
 
 internal class WorkflowFactory(IAgentFactory agentFactory) : IWorkflowFactory
 {

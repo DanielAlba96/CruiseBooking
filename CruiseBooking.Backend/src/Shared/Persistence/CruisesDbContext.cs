@@ -5,7 +5,7 @@ namespace Shared.Persistence;
 
 /// <summary>
 /// Contexto de base de datos Entity Framework Core para la gestión de reservas de cruceros.
-/// Proporciona acceso a todas las entidades del sistema: barcos, cruceros, cabinas, reservas y usuarios.
+/// Proporciona acceso a todas las entidades del sistema: barcos, cruceros, camarotes, reservas y usuarios.
 /// </summary>
 public class CruisesDbContext(DbContextOptions<CruisesDbContext> options) : DbContext(options)
 {
@@ -36,18 +36,18 @@ public class CruisesDbContext(DbContextOptions<CruisesDbContext> options) : DbCo
     public DbSet<CruiseDate> CruiseDates { get; set; }
 
     /// <summary>
-    /// Obtiene o establece el conjunto de entidades de tipos de cabina.
+    /// Obtiene o establece el conjunto de entidades de tipos de camarote.
     /// </summary>
     /// <value>
-    /// Colección de categorías de cabinas disponibles.
+    /// Colección de categorías de camarotes disponibles.
     /// </value>
     public DbSet<CabinType> CabinTypes { get; set; }
 
     /// <summary>
-    /// Obtiene o establece el conjunto de entidades de cabinas de barco.
+    /// Obtiene o establece el conjunto de entidades de camarotes de barco.
     /// </summary>
     /// <value>
-    /// Colección de cabinas específicas en cada barco.
+    /// Colección de camarotes específicos en cada barco.
     /// </value>
     public DbSet<ShipCabin> ShipCabins { get; set; }
 
@@ -76,18 +76,18 @@ public class CruisesDbContext(DbContextOptions<CruisesDbContext> options) : DbCo
     public DbSet<Booking> Bookings { get; set; }
 
     /// <summary>
-    /// Obtiene o establece el conjunto de entidades de cabinas asociadas a reservas.
+    /// Obtiene o establece el conjunto de entidades de camarotes asociados a reservas.
     /// </summary>
     /// <value>
-    /// Colección que vincula cabinas con las reservas específicas.
+    /// Colección que vincula camarotes con las reservas específicas.
     /// </value>
     public DbSet<BookingCabin> BookingCabins { get; set; }
 
     /// <summary>
-    /// Obtiene o establece el conjunto de entidades de ocupantes de cabinas en reservas.
+    /// Obtiene o establece el conjunto de entidades de ocupantes de camarotes en reservas.
     /// </summary>
     /// <value>
-    /// Colección de personas que ocuparán las cabinas en una reserva.
+    /// Colección de personas que ocuparán los camarotes en una reserva.
     /// </value>
     public DbSet<BookingCabinOccupant> BookingCabinOccupants { get; set; }
 
@@ -116,10 +116,10 @@ public class CruisesDbContext(DbContextOptions<CruisesDbContext> options) : DbCo
     public DbSet<UserPayment> PaymentMethods { get; set; }
 
     /// <summary>
-    /// Obtiene o establece el conjunto de entidades de cabinas bloqueadas.
+    /// Obtiene o establece el conjunto de entidades de camarotes bloqueados.
     /// </summary>
     /// <value>
-    /// Colección de cabinas que están bloqueadas y no disponibles para reservas.
+    /// Colección de camarotes que están bloqueados y no disponibles para reservas.
     /// </value>
     public DbSet<LockedCabin> LockedCabins { get; set; }
 

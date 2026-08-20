@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace Shared.Persistence.Resources {
+namespace Core.Agents.Resources {
     using System;
     
     
@@ -39,7 +39,7 @@ namespace Shared.Persistence.Resources {
         public static global::System.Resources.ResourceManager ResourceManager {
             get {
                 if (object.ReferenceEquals(resourceMan, null)) {
-                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("Shared.Persistence.Resources.ErrorMessages", typeof(ErrorMessages).Assembly);
+                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("Core.Agents.Resources.ErrorMessages", typeof(ErrorMessages).Assembly);
                     resourceMan = temp;
                 }
                 return resourceMan;
@@ -61,38 +61,47 @@ namespace Shared.Persistence.Resources {
         }
         
         /// <summary>
-        ///   Busca una cadena traducida similar a El camarote {0} no pertenece al barco de este crucero..
+        ///   Busca una cadena traducida similar a La solicitud de aprobación de la herramienta {0} no corresponde al tipo {1} esperado por el manejador..
         /// </summary>
-        public static string CabinNotInCruise {
+        public static string ApprovalRequestTypeMismatch {
             get {
-                return ResourceManager.GetString("CabinNotInCruise", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Busca una cadena traducida similar a No hay disponibilidad suficiente para el camarote {0}..
-        /// </summary>
-        public static string InsufficientCabinAvailability {
-            get {
-                return ResourceManager.GetString("InsufficientCabinAvailability", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Busca una cadena traducida similar a El número de pasajeros ({1}) del camarote {0} debe estar entre 1 y {2}..
-        /// </summary>
-        public static string InvalidCabinOccupancy {
-            get {
-                return ResourceManager.GetString("InvalidCabinOccupancy", resourceCulture);
+                return ResourceManager.GetString("ApprovalRequestTypeMismatch", resourceCulture);
             }
         }
 
         /// <summary>
-        ///   Busca una cadena traducida similar a Usuario no encontrado.
+        ///   Busca una cadena traducida similar a Se ha producido un error que impide continuar con la conversación..
         /// </summary>
-        public static string UserNotFound {
+        public static string ChatStreamFailed {
             get {
-                return ResourceManager.GetString("UserNotFound", resourceCulture);
+                return ResourceManager.GetString("ChatStreamFailed", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Busca una cadena traducida similar a No tiene permiso para acceder a esta conversación..
+        /// </summary>
+        public static string SessionAccessDenied {
+            get {
+                return ResourceManager.GetString("SessionAccessDenied", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Busca una cadena traducida similar a La sesión de conversación no contiene mensajes..
+        /// </summary>
+        public static string SessionHasNoMessages {
+            get {
+                return ResourceManager.GetString("SessionHasNoMessages", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Busca una cadena traducida similar a El Id de sesión no coincide con la sesión almacenada..
+        /// </summary>
+        public static string SessionIdMismatch {
+            get {
+                return ResourceManager.GetString("SessionIdMismatch", resourceCulture);
             }
         }
     }

@@ -1,6 +1,6 @@
-﻿﻿using Microsoft.Agents.AI;
+﻿using Microsoft.Agents.AI;
 
-namespace Core.Agents.Orchestration;
+namespace Core.Agents.Chat.Orchestration;
 
 /// <summary>
 /// Interface for building the agents used in a chat session

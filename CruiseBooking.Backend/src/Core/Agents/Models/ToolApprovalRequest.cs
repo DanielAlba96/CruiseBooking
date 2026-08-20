@@ -13,9 +13,9 @@ namespace Core.Agents.Models;
 /// <param name="ToolName">Nombre de la herramienta que solicitó la aprobación.</param>
 /// <param name="ApprovalMessage">Resumen en Markdown que se muestra al usuario para que decida.</param>
 [JsonPolymorphic]
-[JsonDerivedType(typeof(ConfirmBookingApprovalRequest), ApprovalToolNames.ConfirmBooking)]
-[JsonDerivedType(typeof(PayApprovalRequest), ApprovalToolNames.PayBooking)]
-[JsonDerivedType(typeof(CancelBookingApprovalRequest), ApprovalToolNames.CancelBooking)]
+[JsonDerivedType(typeof(ConfirmBookingApprovalRequest), BookingToolNames.ConfirmBooking)]
+[JsonDerivedType(typeof(PayApprovalRequest), PostSalesToolNames.PayBooking)]
+[JsonDerivedType(typeof(CancelBookingApprovalRequest), PostSalesToolNames.CancelBooking)]
 internal record ToolApprovalRequest(string CallId, string ToolName, string ApprovalMessage);
 
 /// <summary>

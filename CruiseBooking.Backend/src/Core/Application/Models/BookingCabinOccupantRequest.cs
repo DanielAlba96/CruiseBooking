@@ -1,7 +1,7 @@
 ﻿namespace Core.Application.Models;
 
 /// <summary>
-/// Información del ocupante de la cabina para una reserva de crucero.
+/// Información del ocupante del camarote para una reserva de crucero.
 /// </summary>
 public class BookingCabinOccupantRequest
 {

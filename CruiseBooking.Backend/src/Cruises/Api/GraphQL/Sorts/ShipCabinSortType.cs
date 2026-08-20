@@ -4,8 +4,8 @@ using HotChocolate.Data.Sorting;
 namespace Cruises.Api.GraphQL.Sorts;
 
 /// <summary>
-/// Define el tipo de entrada de ordenamiento para las cabinas de barcos en consultas GraphQL.
-/// Permite ordenar cabinas por precio y tipo de cabina.
+/// Define el tipo de entrada de ordenamiento para los camarotes de barcos en consultas GraphQL.
+/// Permite ordenar camarotes por precio y tipo de camarote.
 /// </summary>
 public class ShipCabinSortType : SortInputType<ShipCabin>
 {
