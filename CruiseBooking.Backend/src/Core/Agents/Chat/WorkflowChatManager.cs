@@ -17,8 +17,8 @@ namespace Core.Agents.Chat;
 /// Gestor de chat en forma de workflow con handoff.
 /// Un agente de triage delega en 2 especialistas segun la petición del usuario.
 /// En el momento del desarrollo existe un bug en MAF que impide solicitar
-/// aprobacion para ejecutar herramientas cuando se usan workflows con handoff,
-/// asi que hay que hacerlo manualmente fuera de MAF.
+/// aprobacion para ejecutar herramientas cuando se usan workflows con handoff
+/// por un problema en los checkpoints, asi que usar una alternativa manual.
 /// <see href="https://github.com/microsoft/agent-framework/issues/5621">Ver issue en GitHub</see>.
 /// </summary>
 internal class WorkflowChatManager(
@@ -143,7 +143,7 @@ internal class WorkflowChatManager(
         if (approvalRequest is not null)
         {
             workflowSession.Messages.Add(new ChatMessage(ChatRole.Assistant, $"Pendiente de aprobación del usuario: {approvalRequest.CallId}"));
-            yield return new ChatStreamEventApproval(approvalRequest.CallId, approvalRequest.ApprovalMessage);
+            yield return new ChatStreamEventApproval(approvalRequest.CallId, approvalRequest.Summary);
         }
 
         var compactedMessages = await _reducer.ReduceAsync(workflowSession.Messages, ct);

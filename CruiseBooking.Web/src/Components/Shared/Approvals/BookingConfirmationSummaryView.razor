@@ -1,0 +1,25 @@
+﻿<MudSimpleTable Dense="true" Hover="false" Elevation="0" Class="mb-3">
+    <tbody>
+        <tr>
+            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Crucero</MudText></td>
+            <td>@Summary.CruiseName</td>
+        </tr>
+        <tr>
+            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Barco</MudText></td>
+            <td>@Summary.ShipName</td>
+        </tr>
+        <tr>
+            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Salida</MudText></td>
+            <td>@DisplayFormat.Date(Summary.DepartureDate)</td>
+        </tr>
+    </tbody>
+</MudSimpleTable>
+
+<SummaryLinesView Cabins="Summary.Cabins" Extras="Summary.Extras" />
+
+<MudDivider Class="my-3" />
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+    <MudText Typo="Typo.subtitle1">Total</MudText>
+    <MudText Typo="Typo.h6" Color="Color.Primary">@DisplayFormat.Price(Summary.Total)</MudText>
+</MudStack>

@@ -168,7 +168,7 @@ public partial class Chat(IChatApi chatApi, IDialogService dialogService, ISnack
         return errorReason;
     }
 
-    async Task<bool> ConfirmApprovalAsync(string summary)
+    async Task<bool> ConfirmApprovalAsync(ApprovalSummary summary)
     {
         var parameters = new DialogParameters<ApprovalDialog>
         {
@@ -176,7 +176,7 @@ public partial class Chat(IChatApi chatApi, IDialogService dialogService, ISnack
         };
 
         var dialog = await _dialogService.ShowAsync<ApprovalDialog>(
-            title: "Aprobación necesaria",
+            title: ApprovalPresentation.TitleFor(summary),
             parameters: parameters,
             options: ApprovalDialogOptions);
 

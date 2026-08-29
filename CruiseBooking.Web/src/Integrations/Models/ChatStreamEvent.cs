@@ -16,8 +16,8 @@ public sealed record ChatStreamEventToken(string Text) : ChatStreamEvent;
 /// Solicitud de aprobación de una herramienta antes de ejecutarse (evento <c>approval_required</c>).
 /// </summary>
 /// <param name="CallId">Identificador de la llamada a la herramienta, necesario para enviar la decisión.</param>
-/// <param name="Summary">Resumen en formato markdown de la operación pendiente de aprobación.</param>
-public sealed record ChatStreamEventApproval(string CallId, string Summary) : ChatStreamEvent;
+/// <param name="Summary">Resumen estructurado de la operación pendiente de aprobación.</param>
+public sealed record ChatStreamEventApproval(string CallId, ApprovalSummary Summary) : ChatStreamEvent;
 
 /// <summary>
 /// Error emitido por el asistente durante el stream (evento <c>failed</c>).

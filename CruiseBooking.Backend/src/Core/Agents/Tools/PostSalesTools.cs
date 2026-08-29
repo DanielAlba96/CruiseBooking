@@ -9,8 +9,6 @@ using Shared.Domain.Exceptions;
 using Shared.Domain.Models;
 using Shared.Domain.Services;
 using System.ComponentModel;
-using System.Globalization;
-using System.Text;
 using System.Text.Json;
 
 namespace Core.Agents.Tools;
@@ -201,89 +199,44 @@ internal sealed class PostSalesTools(IMediator mediator, ICacheService cacheServ
         });
     }
 
-    private static string BuildPaymentSummary(GetCurrentUserBookingDetailDtoResponse booking, PaymentMethodResponse paymentMethod)
+    private static PaymentSummary BuildPaymentSummary(GetCurrentUserBookingDetailDtoResponse booking, PaymentMethodResponse paymentMethod)
     {
-        var culture = CultureInfo.GetCultureInfo("es-ES");
-        var sb = new StringBuilder();
+        var card = new SummaryPaymentMethod(
+            paymentMethod.Card.Brand,
+            paymentMethod.Card.Last4,
+            (int)paymentMethod.Card.ExpMonth,
+            (int)paymentMethod.Card.ExpYear);
 
-        sb.AppendLine("# Resumen del cobro");
-        sb.AppendLine();
-
-        AppendBookingLines(sb, booking, culture);
-
-        sb.AppendLine();
-        sb.AppendLine("## Método de pago");
-        sb.AppendLine();
-        sb.AppendLine($"{paymentMethod.Card.Brand} terminada en {paymentMethod.Card.Last4} (caduca {paymentMethod.Card.ExpMonth:00}/{paymentMethod.Card.ExpYear})");
-
-        sb.AppendLine();
-        sb.AppendLine($"**Importe a cobrar: {GetBookingTotal(booking).ToString("C", culture)}**");
-
-        return sb.ToString();
+        return new PaymentSummary(
+            "Resumen del cobro",
+            ToHeader(booking),
+            ToCabins(booking),
+            ToExtras(booking),
+            card,
+            GetBookingTotal(booking));
     }
 
-    private static string BuildCancellationSummary(GetCurrentUserBookingDetailDtoResponse booking)
+    private static CancellationSummary BuildCancellationSummary(GetCurrentUserBookingDetailDtoResponse booking)
     {
-        var culture = CultureInfo.GetCultureInfo("es-ES");
-        var sb = new StringBuilder();
+        var alreadyCharged = booking.ChargedAt.HasValue;
 
-        sb.AppendLine("# Resumen de la cancelación");
-        sb.AppendLine();
-
-        AppendBookingLines(sb, booking, culture);
-
-        sb.AppendLine();
-
-        if (booking.ChargedAt.HasValue)
-        {
-            sb.AppendLine($"La reserva ya está cobrada, así que se emitirá un reembolso de {GetBookingTotal(booking).ToString("C", culture)} que tardará unos días en aparecer en la tarjeta.");
-        }
-        else
-        {
-            sb.AppendLine("La reserva todavía no está cobrada, así que no habrá ningún reembolso.");
-        }
-
-        sb.AppendLine();
-        sb.AppendLine("**Esta operación es irreversible.**");
-
-        return sb.ToString();
+        return new CancellationSummary(
+            "Resumen de la cancelación",
+            ToHeader(booking),
+            ToCabins(booking),
+            ToExtras(booking),
+            alreadyCharged,
+            alreadyCharged ? GetBookingTotal(booking) : 0m);
     }
 
-    private static void AppendBookingLines(StringBuilder sb, GetCurrentUserBookingDetailDtoResponse booking, CultureInfo culture)
-    {
-        sb.AppendLine($"| Reserva | {booking.Id} |");
-        sb.AppendLine("| --- | --- |");
-        sb.AppendLine($"| Crucero | {booking.Name} |");
-        sb.AppendLine($"| Destino | {booking.Destination} |");
-        sb.AppendLine($"| Barco | {booking.ShipName} |");
-        sb.AppendLine($"| Salida | {booking.StartDate.ToString("d", culture)} |");
-        sb.AppendLine($"| Regreso | {booking.EndDate.ToString("d", culture)} |");
+    private static SummaryBookingHeader ToHeader(GetCurrentUserBookingDetailDtoResponse booking)
+        => new(booking.Id, booking.Name, booking.Destination, booking.ShipName, booking.StartDate, booking.EndDate);
 
-        sb.AppendLine();
-        sb.AppendLine("## Camarotes");
-        sb.AppendLine();
-        sb.AppendLine("| Camarote | Nº Pasajeros | Precio |");
-        sb.AppendLine("| --- | --- | --- |");
+    private static SummaryCabinLine[] ToCabins(GetCurrentUserBookingDetailDtoResponse booking)
+        => [.. booking.Cabins.Select(c => new SummaryCabinLine(c.TypeName, c.Occupants, c.Price))];
 
-        foreach (var cabin in booking.Cabins)
-        {
-            sb.AppendLine($"| {cabin.TypeName} | {cabin.Occupants} | {cabin.Price.ToString("C", culture)} |");
-        }
-
-        if (booking.Extras.Count > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine("## Extras");
-            sb.AppendLine();
-            sb.AppendLine("| Extra | Precio |");
-            sb.AppendLine("| --- | --- |");
-
-            foreach (var extra in booking.Extras)
-            {
-                sb.AppendLine($"| {extra.Name} | {extra.Price.ToString("C", culture)} |");
-            }
-        }
-    }
+    private static SummaryExtraLine[] ToExtras(GetCurrentUserBookingDetailDtoResponse booking)
+        => [.. booking.Extras.Select(e => new SummaryExtraLine(e.Name, e.Price))];
 
     private static decimal GetBookingTotal(GetCurrentUserBookingDetailDtoResponse booking)
         => booking.Cabins.Sum(c => c.Price) + booking.Extras.Sum(e => e.Price);

@@ -1,0 +1,28 @@
+﻿<MudSimpleTable Dense="true" Hover="false" Elevation="0" Class="mb-3">
+    <tbody>
+        <tr>
+            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Reserva</MudText></td>
+            <td>@Booking.BookingId</td>
+        </tr>
+        <tr>
+            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Crucero</MudText></td>
+            <td>@Booking.CruiseName</td>
+        </tr>
+        <tr>
+            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Destino</MudText></td>
+            <td>@Booking.Destination</td>
+        </tr>
+        <tr>
+            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Barco</MudText></td>
+            <td>@Booking.ShipName</td>
+        </tr>
+        <tr>
+            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Salida</MudText></td>
+            <td>@DisplayFormat.Date(Booking.StartDate)</td>
+        </tr>
+        <tr>
+            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Regreso</MudText></td>
+            <td>@DisplayFormat.Date(Booking.EndDate)</td>
+        </tr>
+    </tbody>
+</MudSimpleTable>

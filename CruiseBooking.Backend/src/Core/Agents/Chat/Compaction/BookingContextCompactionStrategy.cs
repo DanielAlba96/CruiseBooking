@@ -50,9 +50,9 @@ internal sealed class BookingContextCompactionStrategy() : CompactionStrategy(Co
             if (group.Kind != CompactionGroupKind.ToolCall)
                 continue;
 
-            var calls = group.Messages.SelectMany(x => x.Contents).OfType<FunctionCallContent>();
+            var calls = group.Messages.SelectMany(x => x.Contents).OfType<FunctionCallContent>().ToList();
 
-            var searches = calls.Where(x => x.Name == BookingToolNames.SearchCruises);
+            var searches = calls.Where(x => x.Name == BookingToolNames.SearchCruises).ToList();
             foreach (var callId in searches.Select(x => x.CallId))
             {
                 var result = group.Messages

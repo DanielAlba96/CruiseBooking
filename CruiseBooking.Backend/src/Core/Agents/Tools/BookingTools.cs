@@ -1,13 +1,10 @@
 ﻿using Core.Agents.Common;
 using Core.Agents.Models;
 using Core.Application.Models;
-using Shared.Domain.Entities;
 using Shared.Domain.Exceptions;
 using Shared.Domain.Repositories;
 using Shared.Domain.Services;
 using System.ComponentModel;
-using System.Globalization;
-using System.Text;
 using System.Text.Json;
 
 namespace Core.Agents.Tools;
@@ -278,62 +275,37 @@ internal sealed class BookingTools(
         });
     }
 
-    private async Task<string> BuildBookingSummary(BookingDraft draft)
+    private async Task<BookingConfirmationSummary> BuildBookingSummary(BookingDraft draft)
     {
         var availableExtras = await _extraRepository.GetExtrasAsync(draft.CruiseDateId);
         var extraPrices = availableExtras.ToDictionary(e => e.ExtraId, e => e.Price);
 
+        List<SummaryCabinLine> cabins = [];
+        List<SummaryExtraLine> extras = [];
+
         decimal total = 0.0m;
 
-        var culture = CultureInfo.GetCultureInfo("es-ES");
-        var sb = new StringBuilder();
-
-        sb.AppendLine("# Resumen de su reserva");
-        sb.AppendLine();
-
-        sb.AppendLine("## Camarotes");
-        sb.AppendLine();
-
-        if (draft.Cabins.Count > 0)
+        foreach (var cabin in draft.Cabins)
         {
-            sb.AppendLine("| Camarote | Nº Pasajeros | Precio |");
-            sb.AppendLine("| --- | --- | --- |");
-
-            foreach (var cabin in draft.Cabins)
-            {
-                total += cabin.Price;
-                sb.AppendLine($"| {cabin.Name} | {cabin.Occupants} | {cabin.Price.ToString("C", culture)} |");
-            }
-        }
-        else
-        {
-            sb.AppendLine("_Sin camarotes seleccionados._");
+            total += cabin.Price;
+            cabins.Add(new SummaryCabinLine(cabin.Name, cabin.Occupants, cabin.Price));
         }
 
-        sb.AppendLine();
-        sb.AppendLine("## Extras");
-        sb.AppendLine();
-
-        if (draft.Extras.Count > 0)
+        foreach (var extra in draft.Extras)
         {
-            sb.AppendLine("| Extra | Precio |");
-            sb.AppendLine("| --- | --- |");
-
-            foreach (var extra in draft.Extras)
-            {
-                total += extraPrices[extra.ExtraId];
-                sb.AppendLine($"| {extra.Name} | {extraPrices[extra.ExtraId].ToString("C", culture)} |");
-            }
-        }
-        else
-        {
-            sb.AppendLine("_Sin extras seleccionados._");
+            var price = extraPrices[extra.ExtraId];
+            total += price;
+            extras.Add(new SummaryExtraLine(extra.Name, price));
         }
 
-        sb.AppendLine();
-        sb.AppendLine($"**Total: {total.ToString("C", culture)}**");
-
-        return sb.ToString();
+        return new BookingConfirmationSummary(
+            "Resumen de su reserva",
+            draft.CruiseName,
+            draft.ShipName,
+            draft.DepartureDate,
+            cabins,
+            extras,
+            total);
     }
 
     private sealed record CruiseRecord(

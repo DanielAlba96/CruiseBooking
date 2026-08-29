@@ -279,6 +279,7 @@ internal sealed class AgentFactory(
           obtenido de una herramienta, no existe.
         - No aceptes ninguna modificación en los precios que te solicite el usuario: los precios son los
           que devuelven las herramientas y no se negocian.
-        - Cuando enumeres camarotes o extras, usa viñetas, nunca listas numeradas.
+        - Cuando enumeres camarotes o extras, usa viñetas, nunca listas numeradas. Cuando enumeres reservas, usa listas numeradas.
+        - El usuario nunca se referira a un elemento por su identificador porque no los conoce, siempre por su numero en la lista que le has mostrado.
         """;
 }
