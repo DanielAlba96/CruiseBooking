@@ -1,0 +1,23 @@
+﻿<BookingHeaderView Booking="Summary.Booking" />
+
+<SummaryLinesView Cabins="Summary.Cabins" Extras="Summary.Extras" />
+
+<MudDivider Class="my-3" />
+
+@if (Summary.AlreadyCharged)
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mb-2">
+        La reserva ya está cobrada, así que se emitirá un reembolso de
+        @DisplayFormat.Price(Summary.RefundAmount) que tardará unos días en aparecer en la tarjeta.
+    </MudAlert>
+}
+else
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mb-2">
+        La reserva todavía no está cobrada, así que no habrá ningún reembolso.
+    </MudAlert>
+}
+
+<MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+    Esta operación es irreversible.
+</MudAlert>

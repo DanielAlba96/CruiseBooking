@@ -4,9 +4,9 @@ using Shared.Domain.Repositories;
 
 namespace Core.Application.UseCases.Cabins;
 
-/// <summary>Libera una cabina bloqueada del usuario actual.</summary>
+/// <summary>Libera un camarote bloqueado del usuario actual.</summary>
 /// <param name="CruiseDateId">Identificador de la fecha de crucero.</param>
-/// <param name="CabinId">Identificador de la cabina del barco.</param>
+/// <param name="CabinId">Identificador del camarote del barco.</param>
 public sealed record UnlockCabin(int CruiseDateId, int CabinId) : IRequest;
 
 /// <summary>Atiende <see cref="UnlockCabin"/>.</summary>

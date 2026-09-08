@@ -16,9 +16,9 @@ public sealed class LockCabinsCleanupJob(ICabinRepository cabinRepository, ILogg
     readonly ILogger<LockCabinsCleanupJob> _logger = logger;
 
     /// <summary>
-    /// Realiza el borrado de las cabinas bloqueadas.
+    /// Realiza el borrado de los camarotes bloqueados.
     /// </summary>
-    /// <param name="data">Listado de cabinas bloqueadas a borrar</param>
+    /// <param name="data">Listado de camarotes bloqueados a borrar</param>
     /// <param name="cancellationToken">Token que cancela la operación contra la base de datos.</param>
     public async Task ExecuteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
     {

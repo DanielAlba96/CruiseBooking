@@ -4,7 +4,7 @@ using Shared.Domain.Repositories;
 
 namespace Core.Application.UseCases.Cabins;
 
-/// <summary>Obtiene los bloqueos de cabina vigentes del usuario actual para una fecha de crucero.</summary>
+/// <summary>Obtiene los bloqueos de camarote vigentes del usuario actual para una fecha de crucero.</summary>
 /// <param name="CruiseDateId">Identificador de la fecha de crucero.</param>
 public sealed record GetLockedCabins(int CruiseDateId) : IRequest<IReadOnlyList<GetLockedCabinDtoResponse>>;
 

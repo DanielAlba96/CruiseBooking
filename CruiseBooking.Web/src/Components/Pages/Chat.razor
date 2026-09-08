@@ -20,23 +20,32 @@
                 <MudStack Spacing="3">
                     @foreach (var msg in _messages)
                     {
-                        <div @key="msg" class="@(msg.IsUser ? "d-flex justify-end" : "d-flex justify-start")">
-                            <MudPaper Class="pa-3" Elevation="0"
-                                      Style="@BubbleStyle(msg)">
-                                @if (msg.IsStreaming && string.IsNullOrEmpty(msg.Content))
-                                {
-                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
-                                }
-                                else if (msg.IsUser)
-                                {
-                                    <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@msg.Content</MudText>
-                                }
-                                else
-                                {
-                                    <div class="chat-markdown">@RenderMarkdown(msg.Content)</div>
-                                }
-                            </MudPaper>
-                        </div>
+                        @if (msg.IsError)
+                        {
+                            <MudAlert @key="msg" Severity="Severity.Error" Variant="Variant.Outlined" Dense="true">
+                                @msg.Content
+                            </MudAlert>
+                        }
+                        else
+                        {
+                            <div @key="msg" class="@(msg.IsUser ? "d-flex justify-end" : "d-flex justify-start")">
+                                <MudPaper Class="pa-3" Elevation="0"
+                                          Style="@BubbleStyle(msg)">
+                                    @if (msg.IsStreaming && string.IsNullOrEmpty(msg.Content))
+                                    {
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                    }
+                                    else if (msg.IsUser)
+                                    {
+                                        <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@msg.Content</MudText>
+                                    }
+                                    else
+                                    {
+                                        <div class="chat-markdown">@MarkdownRenderer.ToMarkupString(msg.Content)</div>
+                                    }
+                                </MudPaper>
+                            </div>
+                        }
                     }
                 </MudStack>
             }

@@ -19,4 +19,9 @@ public class ChatMessageVm
     /// Obtiene o establece un valor que indica si el mensaje se está transmitiendo actualmente.
     /// </summary>
     public bool IsStreaming { get; set; }
+
+    /// <summary>
+    /// Obtiene o establece un valor que indica si el mensaje representa un error de la conversación.
+    /// </summary>
+    public bool IsError { get; set; }
 }

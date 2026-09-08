@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Options;
 using MudBlazor;
-using System.Globalization;
 using System.Net;
 
 namespace CruiseBooking.Components.Pages;
@@ -20,8 +19,6 @@ public partial class MyBookings(
     ISnackbar snackbar,
     IDialogService dialogService)
 {
-    static readonly CultureInfo PriceCulture = CultureInfo.GetCultureInfo("es-ES");
-
     readonly IBookingApiService _api = api;
     readonly NavigationManager _navigationManager = navigationManager;
     readonly IOptionsSnapshot<OpenIdConnectOptions> _oidcOptions = oidcOptions;
@@ -309,7 +306,7 @@ public partial class MyBookings(
     static string FormatNullableDateTime(DateTime? value)
         => value is null ? "Pendiente" : FormatDateTime(value.Value);
 
-    static string FormatPrice(decimal value) => value.ToString("C", PriceCulture);
+    static string FormatPrice(decimal value) => DisplayFormat.Price(value);
 
     void NavigateToLogin()
     {

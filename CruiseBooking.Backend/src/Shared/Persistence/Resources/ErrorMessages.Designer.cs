@@ -70,7 +70,7 @@ namespace Shared.Persistence.Resources {
         }
         
         /// <summary>
-        ///   Busca una cadena traducida similar a No hay disponibilidad suficiente para la cabina {0}..
+        ///   Busca una cadena traducida similar a No hay disponibilidad suficiente para el camarote {0}..
         /// </summary>
         public static string InsufficientCabinAvailability {
             get {

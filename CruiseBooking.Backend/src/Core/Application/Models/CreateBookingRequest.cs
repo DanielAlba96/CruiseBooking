@@ -15,10 +15,10 @@ public class CreateBookingRequest
     public int CruiseDateId { get; set; }
 
     /// <summary>
-    /// Cabinas seleccionadas para la reserva.
+    /// Camarotes seleccionados para la reserva.
     /// </summary>
     /// <value>
-    /// Lista de selecciones de cabinas con sus pasajeros.
+    /// Lista de selecciones de camarotes con sus pasajeros.
     /// </value>
     public List<BookingCabinSelection> SelectedCabins { get; init; } = [];
 

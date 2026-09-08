@@ -42,15 +42,16 @@ public interface ICruiseRepository
     /// <param name="maxDays">Duración máxima del crucero en días.</param>
     /// <param name="adultsOnly">Indica si se buscan cruceros solo para adultos.</param>
     /// <param name="featuredOnly">Indica si se buscan solo cruceros destacados.</param>
-    /// <returns>Tarea con lista de cruceros filtrados.</returns>
-    Task<IReadOnlyList<Cruise>> SearchCruisesAsync(string? zone = null, int? minDays = null, int? maxDays = null, bool adultsOnly = false, bool featuredOnly = false);
-
-    /// <summary>
-    /// Obtiene de forma asincrónica las fechas disponibles para un crucero específico.
-    /// </summary>
-    /// <param name="cruiseId">Identificador del crucero.</param>
-    /// <returns>Tarea con la lista de fechas del crucero.</returns>
-    Task<IReadOnlyList<CruiseDate>> GetCruiseDatesAsync(int cruiseId);
+    /// <param name="itemsPerPage">Número de elementos por página</param>
+    /// <param name="featuredOnly">Número de página</param>
+    /// <returns>Tarea con lista paginada de cruceros filtrados.</returns>
+    Task<(IReadOnlyList<Cruise> items, bool hasMore)> SearchCruisesAsync(
+        string? zone = null,
+        int? minDays = null,
+        int? maxDays = null,
+        bool adultsOnly = false,
+        int pageSize = 5,
+        int page = 1);
 
     /// <summary>
     /// Obtiene de forma asincrónica una fecha de crucero específica.

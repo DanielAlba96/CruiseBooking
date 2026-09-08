@@ -8,9 +8,9 @@ public class CruiseRepository(IDbContextFactory<CruisesDbContext> contextFactory
 {
     private readonly CruisesDbContext _context = contextFactory.CreateDbContext();
 
-    /// <summary>Busca cruceros con filtros opcionales.</summary>
+    /// <inhertidoc/>
     public IQueryable<Cruise> SearchCruises(
-        string? zone = null,
+    string? zone = null,
         int? minDays = null,
         int? maxDays = null,
         bool adultsOnly = false,
@@ -19,21 +19,31 @@ public class CruiseRepository(IDbContextFactory<CruisesDbContext> contextFactory
         return ApplyCruiseFilters(_context.Cruises.AsNoTracking(), zone, minDays, maxDays, adultsOnly, featuredOnly);
     }
 
-    /// <summary>Busca cruceros de forma asíncrona con filtros opcionales.</summary>
-    public async Task<IReadOnlyList<Cruise>> SearchCruisesAsync(
+    /// <inhertidoc/>
+    public async Task<(IReadOnlyList<Cruise> items, bool hasMore)> SearchCruisesAsync(
         string? zone = null,
         int? minDays = null,
         int? maxDays = null,
         bool adultsOnly = false,
-        bool featuredOnly = false)
+        int pageSize = 5,
+        int page = 1)
     {
         using var context = contextFactory.CreateDbContext();
-
-        return await ApplyCruiseFilters(context.Cruises.AsNoTracking(), zone, minDays, maxDays, adultsOnly, featuredOnly)
+        
+        var items = await ApplyCruiseFilters(context.Cruises.AsNoTracking(), zone, minDays, maxDays, adultsOnly, false)
+            .Include(x => x.CruiseDates)
+            .Skip(pageSize * (page - 1))
+            .Take(pageSize + 1) // Obtiene 1 elemento mas para saber si hay otra página
             .ToListAsync();
+
+        bool hasMore = items.Count > pageSize;
+        if (hasMore)
+            items.RemoveAt(items.Count - 1);
+
+        return (items, hasMore);
     }
 
-    /// <summary>Obtiene las fechas de un crucero.</summary>
+    /// <inhertidoc/>
     public IQueryable<CruiseDate> GetCruiseDates(int cruiseId)
     {
         return _context.CruiseDates
@@ -41,28 +51,19 @@ public class CruiseRepository(IDbContextFactory<CruisesDbContext> contextFactory
             .Where(cd => cd.CruiseId == cruiseId);
     }
 
-    /// <summary>Obtiene las fechas de un crucero de forma asíncrona.</summary>
-    public async Task<IReadOnlyList<CruiseDate>> GetCruiseDatesAsync(int cruiseId)
-    {
-        using var context = contextFactory.CreateDbContext();
-
-        return await context.CruiseDates
-            .AsNoTracking()
-            .Where(cd => cd.CruiseId == cruiseId)
-            .ToListAsync();
-    }
-
-    /// <summary>Obtiene una fecha de crucero específica de forma asíncrona.</summary>
+    /// <inhertidoc/>
     public async Task<CruiseDate?> GetCruiseDateAsync(int cruiseDateId)
     {
         using var context = contextFactory.CreateDbContext();
 
         return await context.CruiseDates
             .AsNoTracking()
+            .Include(x => x.Cruise)
+            .Include(x => x.Ship)
             .FirstOrDefaultAsync(cd => cd.Id == cruiseDateId);
     }
 
-    /// <summary>Obtiene una fecha de crucero con sus extras incluidos.</summary>
+    /// <inhertidoc/>
     public async Task<CruiseDate> GetCruiseDateWithExtras(int cruiseDateId)
     {
         using var context = contextFactory.CreateDbContext();
@@ -98,15 +99,15 @@ public class CruiseRepository(IDbContextFactory<CruisesDbContext> contextFactory
     {
         if (!string.IsNullOrEmpty(zone))
         {
-            query = query.Where(c => c.Zone == zone);
+            query = query.Where(c => c.Zone.ToLower() == zone.ToLower());
         }
 
-        if (minDays.HasValue)
+        if (minDays.HasValue && minDays > 0)
         {
             query = query.Where(c => c.DurationInDays >= minDays.Value);
         }
 
-        if (maxDays.HasValue)
+        if (maxDays.HasValue && minDays > 0)
         {
             query = query.Where(c => c.DurationInDays <= maxDays.Value);
         }

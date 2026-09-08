@@ -88,14 +88,14 @@ public interface IBookingRepository
     /// Agrega un pasajero al check-in de una reserva.
     /// </summary>
     /// <param name="bookingId">El identificador de la reserva.</param>
-    /// <param name="occupant">Los datos del ocupante de la cabina.</param>
+    /// <param name="occupant">Los datos del ocupante del camarote.</param>
     Task<int?> AddCheckInPassenger(int bookingId, BookingCabinOccupant occupant);
 
     /// <summary>
     /// Actualiza los datos de un pasajero en el check-in de una reserva.
     /// </summary>
     /// <param name="bookingId">El identificador de la reserva.</param>
-    /// <param name="occupant">Los datos actualizados del ocupante de la cabina.</param>
+    /// <param name="occupant">Los datos actualizados del ocupante del camarote.</param>
     Task<bool> UpdateCheckInPassenger(int bookingId, BookingCabinOccupant occupant);
 
     /// <summary>

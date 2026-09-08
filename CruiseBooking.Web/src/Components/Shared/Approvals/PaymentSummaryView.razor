@@ -1,0 +1,21 @@
+﻿<BookingHeaderView Booking="Summary.Booking" />
+
+<SummaryLinesView Cabins="Summary.Cabins" Extras="Summary.Extras" />
+
+<MudDivider Class="my-3" />
+
+<MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-1">Método de pago</MudText>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+    <CardBrandIcon Brand="Summary.PaymentMethod.Brand" Width="32" />
+    <MudText Typo="Typo.body2">
+        Terminada en @Summary.PaymentMethod.Last4 (caduca @ExpiryText)
+    </MudText>
+</MudStack>
+
+<MudDivider Class="my-3" />
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+    <MudText Typo="Typo.subtitle1">Importe a cobrar</MudText>
+    <MudText Typo="Typo.h6" Color="Color.Primary">@DisplayFormat.Price(Summary.Amount)</MudText>
+</MudStack>

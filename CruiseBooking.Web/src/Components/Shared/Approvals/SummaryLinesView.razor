@@ -1,0 +1,55 @@
+﻿<MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-1">Camarotes</MudText>
+
+@if (Cabins.Count == 0)
+{
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">Sin camarotes seleccionados.</MudText>
+}
+else
+{
+    <MudSimpleTable Dense="true" Hover="false" Elevation="0" Class="mb-3">
+        <thead>
+            <tr>
+                <th>Camarote</th>
+                <th class="text-center">Nº Pasajeros</th>
+                <th class="text-right">Precio</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var cabin in Cabins)
+            {
+                <tr>
+                    <td>@cabin.Name</td>
+                    <td class="text-center">@cabin.Occupants</td>
+                    <td class="text-right">@DisplayFormat.Price(cabin.Price)</td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+}
+
+<MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-1">Extras</MudText>
+
+@if (Extras.Count == 0)
+{
+    <MudText Typo="Typo.body2" Color="Color.Secondary">Sin extras seleccionados.</MudText>
+}
+else
+{
+    <MudSimpleTable Dense="true" Hover="false" Elevation="0">
+        <thead>
+            <tr>
+                <th>Extra</th>
+                <th class="text-right">Precio</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var extra in Extras)
+            {
+                <tr>
+                    <td>@extra.Name</td>
+                    <td class="text-right">@DisplayFormat.Price(extra.Price)</td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+}

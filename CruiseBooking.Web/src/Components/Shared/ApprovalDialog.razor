@@ -1,0 +1,49 @@
+﻿@using CruiseBooking.Integrations.Models
+
+<MudDialog Class="rounded-lg">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+            <MudPaper Elevation="0"
+                      Class="d-flex align-center justify-center rounded-circle flex-none"
+                      Style="width: 44px; height: 44px; background-color: rgba(114, 172, 230, 0.14);">
+                <MudIcon Icon="@OperationIcon" Color="Color.Primary" />
+            </MudPaper>
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.h6">@OperationTitle</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Revisa el detalle antes de decidir</MudText>
+            </MudStack>
+        </MudStack>
+    </TitleContent>
+
+    <DialogContent>
+        <div class="py-2">
+            @switch (Summary)
+            {
+                case BookingConfirmationSummary confirmation:
+                    <BookingConfirmationSummaryView Summary="confirmation" />
+                    break;
+
+                case PaymentSummary payment:
+                    <PaymentSummaryView Summary="payment" />
+                    break;
+
+                case CancellationSummary cancellation:
+                    <CancellationSummaryView Summary="cancellation" />
+                    break;
+            }
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Reject">
+            Rechazar
+        </MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   DropShadow="false"
+                   StartIcon="@Icons.Material.Rounded.CheckCircle"
+                   OnClick="Confirm">
+            Confirmar
+        </MudButton>
+    </DialogActions>
+</MudDialog>

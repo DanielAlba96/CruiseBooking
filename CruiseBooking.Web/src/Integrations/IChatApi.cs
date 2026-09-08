@@ -1,4 +1,4 @@
-using CruiseBooking.Integrations.Models;
+﻿using CruiseBooking.Integrations.Models;
 using Refit;
 
 namespace CruiseBooking.Integrations;
@@ -12,4 +12,11 @@ public interface IChatApi
     /// </summary>
     [Post("/chat/sessions/{sessionId}")]
     Task<Stream> StreamChat(Guid sessionId, [Body] ChatMessageRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Envía la decisión del usuario sobre una operación pendiente de aprobación y devuelve
+    /// la continuación de la conversación como stream Server-Sent Events.
+    /// </summary>
+    [Post("/chat/sessions/{sessionId}/approvals/{callId}")]
+    Task<Stream> SubmitApproval(Guid sessionId, string callId, [Body] ApprovalDecisionRequest request, CancellationToken cancellationToken = default);
 }
